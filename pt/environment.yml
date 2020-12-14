@@ -1,0 +1,102 @@
+name: pretrain_adapter
+channels:
+  - defaults
+dependencies:
+  - python=3.7
+  - pip
+  - pip:
+    - pytorch-transformers==1.2.0
+    - transformers==2.4.1
+    - git+https://github.com/kernelmachine/allennlp.git@4ae123d2c3bfb1ea3ce7362cb6c5bca3d094ffa7
+
+
+## install adapter-transformer hub
+## adapter-transformer 1.0.1 (transformers 1.0.1)
+## torch 1.7.0
+## tensorboardX
+## tokenizer
+
+[201120]
+Resume training language modeling with adapters for helpfulness
+
+python -m scripts.run_language_modeling_with_adapters --train_data_file datasets/amazon/train.txt \
+                                        --line_by_line \
+                                        --output_dir tapt/roberta-tapt-help-adapter \
+                                        --model_type roberta-base \
+                                        --eval_data_file=datasets/amazon/test.txt \
+                                        --tokenizer_name roberta-base \
+                                        --mlm \
+                                        --per_gpu_train_batch_size 4 \
+                                        --gradient_accumulation_steps 64  \
+                                        --model_name_or_path roberta-base \
+                                        --do_eval \
+                                        --evaluate_during_training  \
+                                        --do_train \
+                                        --num_train_epochs 50  \
+                                        --learning_rate 0.0001 \
+                                        --logging_steps 900 \
+                                        --adapter_name=sst-2 \
+                                        --overwrite_output_dir
+
+                                        --model_name_or_path tapt/roberta-tapt-help-adapter/checkpoint-35500 \
+
+
+[pretrain rct-sample adapter]
+python -m scripts.run_language_modeling_with_adapters --train_data_file datasets/hyperpartisan_news/train.txt \
+                                        --line_by_line \
+                                        --output_dir tapt/roberta-tapt-hyper-adapter \
+                                        --model_type roberta-base \
+                                        --eval_data_file=datasets/hyperpartisan_news/test.txt \
+                                        --tokenizer_name roberta-base \
+                                        --mlm \
+                                        --per_gpu_train_batch_size 4 \
+                                        --gradient_accumulation_steps 64  \
+                                        --model_name_or_path roberta-base \
+                                        --do_eval \
+                                        --evaluate_during_training  \
+                                        --do_train \
+                                        --num_train_epochs 100  \
+                                        --learning_rate 0.0001 \
+                                        --logging_steps 900 \
+                                        --adapter_name=hyper_cls \
+
+
+[pretrain acl adapter]
+python -m scripts.run_language_modeling_with_adapters --train_data_file datasets/scierc/train.txt \
+                                        --line_by_line \
+                                        --output_dir tapt-adapter/scierc/ \
+                                        --model_type roberta-base \
+                                        --tokenizer_name roberta-base \
+                                        --mlm \
+                                        --per_gpu_train_batch_size 4 \
+                                        --gradient_accumulation_steps 64  \
+                                        --model_name_or_path roberta-base \
+                                        --do_eval \
+                                        --do_train \
+                                        --num_train_epochs 100  \
+                                        --learning_rate 0.0001 \
+                                        --logging_steps 900 \
+                                        --adapter_name=scierc \
+                                        --overwrite_output_dir \
+                                        --evaluate_during_training  \
+                                        --eval_data_file=datasets/scierc/dev.txt \
+
+
+
+[TAPT]
+python -m scripts.run_language_modeling --train_data_file datasets/chemprot/train.txt \
+  --line_by_line \
+  --output_dir tapt/roberta-tapt-acl-TAPT \
+  --model_type roberta-base \
+  --eval_data_file=datasets/citation_intent/test.txt \
+  --tokenizer_name roberta-base \
+  --mlm \
+  --per_gpu_train_batch_size 4 \
+  --gradient_accumulation_steps 64  \
+  --model_name_or_path roberta-base \
+  --do_eval \
+  --evaluate_during_training  \
+  --do_train \
+  --num_train_epochs 100  \
+  --learning_rate 0.0001 \
+  --logging_steps 900 \
