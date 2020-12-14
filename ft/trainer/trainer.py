@@ -741,6 +741,8 @@ class Trainer:
         self.state.is_world_process_zero = self.is_world_process_zero()
 
         tr_loss = torch.tensor(0.0).to(self.args.device)
+        loss = 0.0 ## loss
+        stats = 0.0 ## f1 score
         self._logging_loss_scalar = 0
         self._globalstep_last_logged = 0
         self._total_flos = self.state.total_flos
@@ -783,9 +785,15 @@ class Trainer:
                     and _use_ddp_no_sync
                 ):
                     with model.no_sync():
-                        tr_loss += self.training_step(model, inputs)
+                        loss_temp, stats_temp = self.training_step(model, inputs)
+                        tr_loss += loss_temp
+                        loss += loss_temp.detach().cpu().numpy()
+                        stats += stats_temp ## f1
                 else:
-                    tr_loss += self.training_step(model, inputs)
+                    loss_temp, stats_temp = self.training_step(model, inputs)
+                    tr_loss += loss_temp
+                    loss += loss_temp.detach().cpu().numpy()
+                    stats += stats_temp ## f1
                 self._total_flos += self.floating_point_ops(inputs)
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
@@ -824,6 +832,14 @@ class Trainer:
                     self.control = self.callback_handler.on_step_end(self.args, self.state, self.control)
 
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
+
+                    ## log stats: steps, loss, f1
+                    self.state.log_history.append({"steps": self.state.global_step,
+                                                   "loss": loss,
+                                                   "f1": stats})
+                    # reset stats to record loss and f1 for each step
+                    loss = 0.0  ## loss
+                    stats = 0.0  ## f1 score
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -1086,6 +1102,8 @@ class Trainer:
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
         output = {**logs, **{"step": self.state.global_step}}
         self.state.log_history.append(output)
+        #print('log history: ', self.state.log_history)##
+        #print('output: ', output)##
 
     def _prepare_inputs(self, inputs: Dict[str, Union[torch.Tensor, Any]]) -> Dict[str, Union[torch.Tensor, Any]]:
         """
@@ -1134,15 +1152,16 @@ class Trainer:
 
         if self.args.fp16 and _use_native_amp:
             with autocast():
-                loss = self.compute_loss(model, inputs)
+                loss, stats = self.compute_loss(model, inputs) ## loss
         else:
-            loss = self.compute_loss(model, inputs)
+            loss, stats = self.compute_loss(model, inputs) ## loss
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
         if self.args.gradient_accumulation_steps > 1:
             loss = loss / self.args.gradient_accumulation_steps
+            stats = stats / self.args.gradient_accumulation_steps
 
         if self.args.fp16 and _use_native_amp:
             self.scaler.scale(loss).backward()
@@ -1152,7 +1171,7 @@ class Trainer:
         else:
             loss.backward()
 
-        return loss.detach()
+        return loss.detach(), stats
 
     def compute_loss(self, model, inputs):
         """
@@ -1165,7 +1184,24 @@ class Trainer:
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
         # We don't use .loss here since the model may return tuples instead of ModelOutput.
-        return outputs[0]
+        #print('input: ', inputs)
+        #print('input keys: ', [key for key in inputs])
+        #print('input keys shape: ', [inputs[key].shape for key in inputs])
+
+        #print('output: ', outputs)
+        #print('output keys: ', [key for key in outputs])
+        #print('output keys shape: ', [key.shape for key in outputs])
+
+        #print('----------------------')
+        loss = outputs[0]
+        labels, pred = inputs["labels"], outputs[1]
+        #print('1: ',pred.detach().cpu().numpy(), labels)
+        stats = self.compute_metrics(EvalPrediction(predictions=pred.detach().cpu().numpy(),
+                                                    label_ids=labels.detach().cpu().numpy()))['f1']
+        #self.log(stats)
+        #self.state.log_history.append(stats)##
+        #print('log history: ', self.state.log_history)##
+        return loss, stats #outputs[0]
 
     def is_local_master(self) -> bool:
         """
