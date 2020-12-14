@@ -1,0 +1,142 @@
+[Roberta baseline]
+python new_train.py \
+  --do_train \
+  --do_eval \
+  --data_dir datasets/imdb/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 1 \
+  --learning_rate 1e-4 \
+  --num_train_epochs 20 \
+  --output_dir results/baseline/1e-4_20/imdb \
+  --task_name imdb \
+  --do_predict \
+  --load_best_model_at_end \
+  --model_name_or_path roberta-base \
+  --metric macro \
+  --overwrite_output_dir \
+
+  --sanity_check \
+
+  --metric_for_best_model
+
+[chemprot, citation_intent, scierc, hyperpartisan, imdb 20 epochs experiment]
+
+[Roberta train adapter with raw adapter]
+python new_train_1.py \
+  --do_train \
+  --do_eval \
+  --data_dir datasets/rct-20k/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 2e-5 \
+  --num_train_epochs 10 \
+  --output_dir results/adapter/rct-20k/raw_2e-5/ \
+  --task_name rct-20k \
+  --do_predict \
+  --load_best_model_at_end \
+  --train_adapter_wop \
+  --model_name_or_path roberta-base \
+  --metric micro \
+
+[1 gpu: chemprot, acl, (to be addressed: scierc hyper agnews)]
+
+  --sanity_check \
+
+[8 adapters to be trained]
+
+  --metric_for_best_model
+
+[Roberta train pre-trained adapter]
+python new_train_0.py \
+  --do_train \
+  --do_eval \
+  --data_dir datasets/hyperpartisan_news/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 5e-4 \
+  --num_train_epochs 10 \
+  --output_dir results/adapter/hyperpartisan_news/5e-4/ \
+  --task_name hyperpartisan_news \
+  --do_predict \
+  --load_best_model_at_end \
+  --train_adapter \
+  --model_name_or_path adapter/hyperpartisan_news/ \
+  --adapter_config pfeiffer \
+  --metric macro \
+  --overwrite_output_dir \
+
+[helpfulness]
+In progress: (1) ~ 16pm
+
+  --metric_for_best_model eval_f1 \
+  --evaluate_during_training \
+  --sanity_check \
+
+
+[Roberta TAPT]
+python new_train.py \
+  --do_train \
+  --do_eval \
+  --data_dir datasets/citation_intent/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 2e-5 \
+  --num_train_epochs 2 \
+  --output_dir results/test/citation_intent/ \
+  --task_name citation_intent \
+  --do_predict \
+  --load_best_model_at_end \
+  --model_name_or_path tapt/roberta-tapt-acl-TAPT/ \
+  --metric macro \
+  --sanity_check \
+
+  --metric_for_best_model
+
+
+[Roberta adapter fusion]
+python new_train_1.py \
+  --do_train \
+  --do_eval \
+  --data_dir datasets/scierc/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 1e-4 \
+  --num_train_epochs 10 \
+  --output_dir results/fusion/scierc/scierc-ag-1e-4/ \
+  --task_name scierc \
+  --do_predict \
+  --load_best_model_at_end \
+  --train_fusion \
+  --model_name_or_path roberta-base \
+  --adapter_config pfeiffer \
+  --metric macro \
+  --fusion_adapter_path1 results/adapter/scierc/1e-4_20ep/ \
+  --fusion_adapter_path2 results/adapter/ag/1e-4/ \
+  --overwrite_output_dir \
+
+  [imdb (0, 1pm)]
+
+  Fri
+  [fusion in-domain 1e-4 5 small datasets: ag(1, 8pm), hyperpartisan_news(1, 10pm)]
+  (heavy: helpfulness, imdb, rct-20k)
+
+  [fusion cross-domain with 1e-4, ((2e-5)) 5 small datasets: gpu 0]
+  acl-hyper for acl, hyper (0) // acl-ag for acl, scierc-ag for scierc (1) -- ~~~ done,
+  acl-ag for ag  (0) // scierc-ag for ag (0) //scierc-hyper for scierc (0), hyper (0)
+  [1 gpu: chemprot, acl scierc hyper, to be input: agnews)]
+  [rct, helpfulness, imdb gpu 1 raw adapter training]
+
+  Sat
+  [raw adapter 1e-4 8 tasks or 5 light tasks]
+
+  Maybe Sun, Mon
+  [fusion in-domain, cross-domain 1e-4 large-scale datasets (total 3*2) ]
+
+
+  --sanity_check \
+  --metric_for_best_model

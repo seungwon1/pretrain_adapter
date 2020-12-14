@@ -20,7 +20,7 @@ import dataclasses
 import logging
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 import sys
 import json
@@ -376,15 +376,17 @@ def main():
     test_dataset = FTDataset(test_encodings, test_labels)
 
     def compute_metrics_ft(pred):
-        # print('pred: ', pred)
+        #print('pred: ', pred)
         labels = pred.label_ids
-        # print('labels: ', labels)
+        #print('labels: ', labels)
         preds = pred.predictions.argmax(-1)
-        # print('preds: ', preds)
+        #print('preds: ', preds)
+        #print(labels, preds)
         precision, recall, f1, _ = precision_recall_fscore_support(
             labels, preds, average=data_args.metric, labels=[i for i in range(num_labels)]
         )
-        # print('f1: ', f1)
+        #print('f1: ', f1)
+        #print('////////')
         acc = accuracy_score(labels, preds)
         return {"accuracy": acc, "f1": f1, "precision": precision, "recall": recall}
 
@@ -436,6 +438,7 @@ def main():
             model_path=model_args.model_name_or_path if os.path.isdir(model_args.model_name_or_path) else None
         )
         trainer.save_model()
+        print("history: ", len(trainer.state.log_history), trainer.state.log_history)
 
         # after finishing traning, save keys
         if data_args.sanity_check:
