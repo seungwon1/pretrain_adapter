@@ -330,6 +330,7 @@ class Trainer:
 
         self.state = TrainerState()
         self.control = TrainerControl()
+        self.stats = []
         # Internal variable for total_flos used to count as tensors (for distributed + TPU), will be sent in the
         # state at each call to self.log.
         self._total_flos = None
@@ -769,6 +770,10 @@ class Trainer:
             steps_in_epoch = len(epoch_iterator) if train_dataset_is_sized else self.args.max_steps
             self.control = self.callback_handler.on_epoch_begin(self.args, self.state, self.control)
 
+            # reset tracked values for each epoch
+            loss = 0.0  ## loss
+            stats = 0.0  ## f1 score
+
             for step, inputs in enumerate(epoch_iterator):
 
                 # Skip past any already trained steps if resuming training
@@ -834,12 +839,13 @@ class Trainer:
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
 
                     ## log stats: steps, loss, f1
-                    self.state.log_history.append({"steps": self.state.global_step,
+                    self.stats.append({"steps": self.state.global_step,
                                                    "loss": loss,
                                                    "f1": stats})
                     # reset stats to record loss and f1 for each step
                     loss = 0.0  ## loss
                     stats = 0.0  ## f1 score
+                    #print('reset step: ', self.state.global_step, step)
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -1193,15 +1199,16 @@ class Trainer:
         #print('output keys shape: ', [key.shape for key in outputs])
 
         #print('----------------------')
-        loss = outputs[0]
-        labels, pred = inputs["labels"], outputs[1]
+        #loss = outputs[0]
+        labels, pred = inputs["labels"].detach().cpu().numpy(), outputs[1].detach().cpu().numpy()
         #print('1: ',pred.detach().cpu().numpy(), labels)
-        stats = self.compute_metrics(EvalPrediction(predictions=pred.detach().cpu().numpy(),
-                                                    label_ids=labels.detach().cpu().numpy()))['f1']
+        stats = self.compute_metrics(EvalPrediction(predictions=pred,
+                                                    label_ids=labels))['f1']
+        #print('stats: ', stats)
         #self.log(stats)
         #self.state.log_history.append(stats)##
         #print('log history: ', self.state.log_history)##
-        return loss, stats #outputs[0]
+        return outputs[0], stats #outputs[0]
 
     def is_local_master(self) -> bool:
         """
