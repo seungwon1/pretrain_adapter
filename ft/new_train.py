@@ -52,6 +52,7 @@ from transformers import (
     set_seed,
 )
 import transformers
+from utils.plot_stats import plot_save_results
 
 transformers.logging.set_verbosity_info()
 
@@ -438,7 +439,7 @@ def main():
             model_path=model_args.model_name_or_path if os.path.isdir(model_args.model_name_or_path) else None
         )
         trainer.save_model()
-        print("history: ", len(trainer.state.log_history), trainer.state.log_history)
+        #print("stats history: ", len(trainer.stats), trainer.stats)
 
         # after finishing traning, save keys
         if data_args.sanity_check:
@@ -490,6 +491,11 @@ def main():
                         logger.info("  %s = %s", key, value)
                         writer.write("%s = %s\n" % (key, value))
 
+    # save stats
+
+    # Train stage
+    plot_save_results(trainer.stats, training_args.output_dir, training_args.num_train_epochs,
+                      stage='Train')
     return eval_results
 
 
