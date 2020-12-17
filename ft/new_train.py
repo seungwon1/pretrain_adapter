@@ -496,6 +496,8 @@ def main():
     # Train stage
     plot_save_results(trainer.stats, training_args.output_dir, training_args.num_train_epochs,
                       stage='Train')
+    # Evaluation stage (including validation and test)
+    print(trainer.eval_stats)
     return eval_results
 
 
