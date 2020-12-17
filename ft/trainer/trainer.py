@@ -331,6 +331,7 @@ class Trainer:
         self.state = TrainerState()
         self.control = TrainerControl()
         self.stats = []
+        self.eval_stats = []
         # Internal variable for total_flos used to count as tensors (for distributed + TPU), will be sent in the
         # state at each call to self.log.
         self._total_flos = None
@@ -1400,6 +1401,8 @@ class Trainer:
             xm.master_print(met.metrics_report())
 
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+        output.metrics['steps'] = self.state.global_step
+        self.eval_stats.append(output.metrics)
         return output.metrics
 
     def predict(self, test_dataset: Dataset) -> PredictionOutput:
