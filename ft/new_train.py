@@ -54,8 +54,7 @@ from transformers import (
 import transformers
 from utils.plot_stats import plot_save_results
 
-#transformers.logging.set_verbosity_info()
-#transformers.logging.set_verbosity_warning()
+transformers.logging.set_verbosity_info()
 logger = logging.getLogger(__name__)
 
 

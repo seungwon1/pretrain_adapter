@@ -840,6 +840,7 @@ class Trainer:
 
                     # log stats (train)
                     self.log({"loss": loss, "f1": stats})
+
                     # perform eval, log stats (eval)
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
 
@@ -1443,7 +1444,7 @@ class Trainer:
         test_dataloader = self.get_test_dataloader(test_dataset)
         #### added
         output = self.prediction_loop(test_dataloader, description="Prediction")
-        self.log(output.metrics) ###
+        #self.log(output.metrics) ###
         return output #self.prediction_loop(test_dataloader, description="Prediction")
 
     def prediction_loop(
