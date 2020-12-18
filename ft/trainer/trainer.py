@@ -163,6 +163,7 @@ if is_azureml_available():
 
 logger = logging.get_logger(__name__)
 
+from transformers import AutoConfig
 
 class Trainer:
     """
@@ -837,12 +838,16 @@ class Trainer:
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(self.args, self.state, self.control)
 
+                    # log stats (train)
+                    self.log({"loss": loss, "f1": stats})
+                    # perform eval, log stats (eval)
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
 
                     ## log stats: steps, loss, f1
                     self.stats.append({"steps": self.state.global_step,
                                                    "loss": loss,
                                                    "f1": stats})
+
                     # reset stats to record loss and f1 for each step
                     loss = 0.0  ## loss
                     stats = 0.0  ## f1 score
@@ -874,23 +879,25 @@ class Trainer:
             logger.info("\n\nTraining completed. Do not forget to share your adapters on https://adapterhub.ml =)\n\n")
         else:
             logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
+
         if self.args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             logger.info(
                 f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric})."
             )
             if isinstance(model, PreTrainedModel):
-                self.model = model.from_pretrained(self.state.best_model_checkpoint)
-                self.model = self.model.to(self.args.device)
-            else:
                 state_dict = torch.load(os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME))
                 self.model.load_state_dict(state_dict)
 
+                # replace below scripts with above since forward pass excludes the final classification layer
+                # self.model = model.from_pretrained(self.state.best_model_checkpoint)
+                # self.model = self.model.to(self.args.device)
+            else:
+                state_dict = torch.load(os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME))
+                self.model.load_state_dict(state_dict)
         if self._total_flos is not None:
             self.store_flos()
             self.log({"total_flos": self.state.total_flos})
-
         self.control = self.callback_handler.on_train_end(self.args, self.state, self.control)
-
         return TrainOutput(self.state.global_step, tr_loss.item() / self.state.global_step)
 
     def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch):
@@ -1434,8 +1441,10 @@ class Trainer:
             raise ValueError("test_dataset must implement __len__")
 
         test_dataloader = self.get_test_dataloader(test_dataset)
-
-        return self.prediction_loop(test_dataloader, description="Prediction")
+        #### added
+        output = self.prediction_loop(test_dataloader, description="Prediction")
+        self.log(output.metrics) ###
+        return output #self.prediction_loop(test_dataloader, description="Prediction")
 
     def prediction_loop(
         self, dataloader: DataLoader, description: str, prediction_loss_only: Optional[bool] = None

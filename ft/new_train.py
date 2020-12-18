@@ -54,8 +54,8 @@ from transformers import (
 import transformers
 from utils.plot_stats import plot_save_results
 
-transformers.logging.set_verbosity_info()
-
+#transformers.logging.set_verbosity_info()
+#transformers.logging.set_verbosity_warning()
 logger = logging.getLogger(__name__)
 
 
@@ -265,11 +265,12 @@ def main():
         config=config,
         cache_dir=model_args.cache_dir,
     )
-    # if data_args.sanity_check:
+
+    #if data_args.sanity_check:
     #    bsw = {}
     #    for i in model.state_dict():
     #        bsw[i] = model.state_dict()[i]
-    #    np.save('after_model_loaded.npy', bsw)  # Just used for sanity check, (500MB)
+    #    np.save(training_args.output_dir + 'after_model_loaded.npy', bsw)  # Just used for sanity check, (500MB)
 
     if model_args.train_adapter_wop:
         model.add_adapter(data_args.task_name, AdapterType.text_task)
@@ -318,11 +319,11 @@ def main():
     else:
         model.add_classification_head(data_args.task_name, num_labels=num_labels)
 
-    # if data_args.sanity_check:
+    #if data_args.sanity_check:
     #    bsw = {}
     #    for i in model.state_dict():
     #        bsw[i] = model.state_dict()[i]
-    #    np.save('after_add_heads.npy', bsw) # Just used for sanity check, (500MB)
+    #    np.save(training_args.output_dir + 'after_add_heads.npy', bsw) # Just used for sanity check, (500MB)
 
     # if data_args.sanity_check:
     #    bsw = {}
@@ -378,14 +379,15 @@ def main():
 
     def compute_metrics_ft(pred):
         #print('pred: ', pred)
+        #for each in pred:
+        #    print(each.shape)
         labels = pred.label_ids
         #print('labels: ', labels)
         preds = pred.predictions.argmax(-1)
         #print('preds: ', preds)
         #print(labels, preds)
         precision, recall, f1, _ = precision_recall_fscore_support(
-            labels, preds, average=data_args.metric, labels=[i for i in range(num_labels)]
-        )
+            labels, preds, average=data_args.metric, labels=[i for i in range(num_labels)], zero_division=0)
         #print('f1: ', f1)
         #print('////////')
         acc = accuracy_score(labels, preds)
@@ -479,7 +481,7 @@ def main():
         test_datasets = [test_dataset]
 
         for test_dataset in test_datasets:
-            test_eval_result = trainer.evaluate(eval_dataset=test_dataset)
+            test_eval_result = trainer.predict(test_dataset=test_dataset).metrics
             output_test_eval_file = os.path.join(training_args.output_dir, f"test_results_{data_args.task_name}.txt")
 
             if trainer.is_world_master():
@@ -497,7 +499,8 @@ def main():
     plot_save_results(trainer.stats, training_args.output_dir, training_args.num_train_epochs,
                       stage='Train')
     # Evaluation stage (including validation and test)
-    print(trainer.eval_stats)
+    # print(trainer.stats)
+    # print(trainer.eval_stats)
     return eval_results
 
 
