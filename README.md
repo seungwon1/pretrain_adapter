@@ -12,8 +12,8 @@ pip install -r requirements.txt
 - python=3.6.8
 - torch=1.7.0
 - adapter-transformer=1.0.1
-- sklearn
-- tensorboard
+- sklearn=0.23.2
+- tensorboard=2.4.0
 
 #### PreTraining
 
