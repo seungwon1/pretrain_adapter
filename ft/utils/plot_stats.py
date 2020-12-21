@@ -7,10 +7,8 @@ def plot_save_results(records, save_dir, num_epochs, stage = 'Train'):
     f1s = [each['f1'] for each in records]
 
     total_steps = len(records)
-    losses_rm = np.array(losses)\
-            .dot(np.triu(np.ones((total_steps, total_steps), dtype=int)))/(np.arange(total_steps)+1)
-    f1s_rm = np.array(f1s)\
-            .dot(np.triu(np.ones((total_steps, total_steps), dtype=int)))/(np.arange(total_steps)+1)
+    losses_rm = np.array(losses).dot(np.triu(np.ones((total_steps, total_steps), dtype=int)))/(np.arange(total_steps)+1)
+    f1s_rm = np.array(f1s).dot(np.triu(np.ones((total_steps, total_steps), dtype=int)))/(np.arange(total_steps)+1)
 
     plt.plot(losses, label='loss')
     plt.plot(losses_rm, label='loss_rm')

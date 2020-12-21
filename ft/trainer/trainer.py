@@ -28,7 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 
 # Integrations must be imported before ML frameworks:
-from .integrations import (  # isort: split
+from transformers.integrations import (  # isort: split
     default_hp_search_backend,
     hp_params,
     is_azureml_available,
@@ -51,14 +51,14 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 
-from .adapter_bert import get_fusion_regularization_loss
-from .data.data_collator import DataCollator, DataCollatorWithPadding, default_data_collator
-from .file_utils import WEIGHTS_NAME, is_datasets_available, is_in_notebook, is_torch_tpu_available
-from .modeling_auto import MODEL_FOR_QUESTION_ANSWERING_MAPPING
-from .modeling_utils import PreTrainedModel
-from .optimization import AdamW, get_linear_schedule_with_warmup
-from .tokenization_utils_base import PreTrainedTokenizerBase
-from .trainer_callback import (
+from transformers.adapter_bert import get_fusion_regularization_loss
+from transformers.data.data_collator import DataCollator, DataCollatorWithPadding, default_data_collator
+from transformers.file_utils import WEIGHTS_NAME, is_datasets_available, is_in_notebook, is_torch_tpu_available
+from transformers.modeling_auto import MODEL_FOR_QUESTION_ANSWERING_MAPPING
+from transformers.modeling_utils import PreTrainedModel
+from transformers.optimization import AdamW, get_linear_schedule_with_warmup
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.trainer_callback import (
     CallbackHandler,
     DefaultFlowCallback,
     PrinterCallback,
@@ -67,7 +67,7 @@ from .trainer_callback import (
     TrainerControl,
     TrainerState,
 )
-from .trainer_pt_utils import (
+from transformers.trainer_pt_utils import (
     DistributedTensorGatherer,
     SequentialDistributedSampler,
     distributed_broadcast_scalars,
@@ -79,7 +79,7 @@ from .trainer_pt_utils import (
     nested_xla_mesh_reduce,
     reissue_pt_warnings,
 )
-from .trainer_utils import (
+from transformers.trainer_utils import (
     PREFIX_CHECKPOINT_DIR,
     BestRun,
     EvalPrediction,
@@ -90,8 +90,8 @@ from .trainer_utils import (
     default_hp_space,
     set_seed,
 )
-from .training_args import TrainingArguments
-from .utils import logging
+from transformers.training_args import TrainingArguments
+from transformers.utils import logging
 
 
 _use_native_amp = False
@@ -130,23 +130,23 @@ if is_torch_tpu_available():
     import torch_xla.distributed.parallel_loader as pl
 
 if is_tensorboard_available():
-    from .integrations import TensorBoardCallback
+    from transformers.integrations import TensorBoardCallback
 
     DEFAULT_CALLBACKS.append(TensorBoardCallback)
 
 
 if is_wandb_available():
-    from .integrations import WandbCallback
+    from transformers.integrations import WandbCallback
 
     DEFAULT_CALLBACKS.append(WandbCallback)
 
 if is_comet_available():
-    from .integrations import CometCallback
+    from transformers.integrations import CometCallback
 
     DEFAULT_CALLBACKS.append(CometCallback)
 
 if is_mlflow_available():
-    from .integrations import MLflowCallback
+    from transformers.integrations import MLflowCallback
 
     DEFAULT_CALLBACKS.append(MLflowCallback)
 
@@ -157,13 +157,11 @@ if is_ray_available():
     from ray import tune
 
 if is_azureml_available():
-    from .integrations import AzureMLCallback
+    from transformers.integrations import AzureMLCallback
 
     DEFAULT_CALLBACKS.append(AzureMLCallback)
 
 logger = logging.get_logger(__name__)
-
-from transformers import AutoConfig
 
 class Trainer:
     """
@@ -331,8 +329,6 @@ class Trainer:
 
         self.state = TrainerState()
         self.control = TrainerControl()
-        self.stats = []
-        self.eval_stats = []
         # Internal variable for total_flos used to count as tensors (for distributed + TPU), will be sent in the
         # state at each call to self.log.
         self._total_flos = None
@@ -744,8 +740,6 @@ class Trainer:
         self.state.is_world_process_zero = self.is_world_process_zero()
 
         tr_loss = torch.tensor(0.0).to(self.args.device)
-        loss = 0.0 ## loss
-        stats = 0.0 ## f1 score
         self._logging_loss_scalar = 0
         self._globalstep_last_logged = 0
         self._total_flos = self.state.total_flos
@@ -772,10 +766,6 @@ class Trainer:
             steps_in_epoch = len(epoch_iterator) if train_dataset_is_sized else self.args.max_steps
             self.control = self.callback_handler.on_epoch_begin(self.args, self.state, self.control)
 
-            # reset tracked values for each epoch
-            loss = 0.0  ## loss
-            stats = 0.0  ## f1 score
-
             for step, inputs in enumerate(epoch_iterator):
 
                 # Skip past any already trained steps if resuming training
@@ -792,15 +782,9 @@ class Trainer:
                     and _use_ddp_no_sync
                 ):
                     with model.no_sync():
-                        loss_temp, stats_temp = self.training_step(model, inputs)
-                        tr_loss += loss_temp
-                        loss += loss_temp.detach().cpu().numpy()
-                        stats += stats_temp ## f1
+                        tr_loss += self.training_step(model, inputs)
                 else:
-                    loss_temp, stats_temp = self.training_step(model, inputs)
-                    tr_loss += loss_temp
-                    loss += loss_temp.detach().cpu().numpy()
-                    stats += stats_temp ## f1
+                    tr_loss += self.training_step(model, inputs)
                 self._total_flos += self.floating_point_ops(inputs)
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
@@ -838,21 +822,7 @@ class Trainer:
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(self.args, self.state, self.control)
 
-                    # log stats (train)
-                    self.log({"loss": loss, "f1": stats})
-
-                    # perform eval, log stats (eval)
                     self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
-
-                    ## log stats: steps, loss, f1
-                    self.stats.append({"steps": self.state.global_step,
-                                                   "loss": loss,
-                                                   "f1": stats})
-
-                    # reset stats to record loss and f1 for each step
-                    loss = 0.0  ## loss
-                    stats = 0.0  ## f1 score
-                    #print('reset step: ', self.state.global_step, step)
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -880,25 +850,23 @@ class Trainer:
             logger.info("\n\nTraining completed. Do not forget to share your adapters on https://adapterhub.ml =)\n\n")
         else:
             logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
-
         if self.args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             logger.info(
                 f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric})."
             )
             if isinstance(model, PreTrainedModel):
-                state_dict = torch.load(os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME))
-                self.model.load_state_dict(state_dict)
-
-                # replace below scripts with above since forward pass excludes the final classification layer
-                # self.model = model.from_pretrained(self.state.best_model_checkpoint)
-                # self.model = self.model.to(self.args.device)
+                self.model = model.from_pretrained(self.state.best_model_checkpoint)
+                self.model = self.model.to(self.args.device)
             else:
                 state_dict = torch.load(os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME))
                 self.model.load_state_dict(state_dict)
+
         if self._total_flos is not None:
             self.store_flos()
             self.log({"total_flos": self.state.total_flos})
+
         self.control = self.callback_handler.on_train_end(self.args, self.state, self.control)
+
         return TrainOutput(self.state.global_step, tr_loss.item() / self.state.global_step)
 
     def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch):
@@ -1117,8 +1085,6 @@ class Trainer:
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
         output = {**logs, **{"step": self.state.global_step}}
         self.state.log_history.append(output)
-        #print('log history: ', self.state.log_history)##
-        #print('output: ', output)##
 
     def _prepare_inputs(self, inputs: Dict[str, Union[torch.Tensor, Any]]) -> Dict[str, Union[torch.Tensor, Any]]:
         """
@@ -1167,16 +1133,15 @@ class Trainer:
 
         if self.args.fp16 and _use_native_amp:
             with autocast():
-                loss, stats = self.compute_loss(model, inputs) ## loss
+                loss = self.compute_loss(model, inputs)
         else:
-            loss, stats = self.compute_loss(model, inputs) ## loss
+            loss = self.compute_loss(model, inputs)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
         if self.args.gradient_accumulation_steps > 1:
             loss = loss / self.args.gradient_accumulation_steps
-            stats = stats / self.args.gradient_accumulation_steps
 
         if self.args.fp16 and _use_native_amp:
             self.scaler.scale(loss).backward()
@@ -1186,7 +1151,7 @@ class Trainer:
         else:
             loss.backward()
 
-        return loss.detach(), stats
+        return loss.detach()
 
     def compute_loss(self, model, inputs):
         """
@@ -1199,25 +1164,7 @@ class Trainer:
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
         # We don't use .loss here since the model may return tuples instead of ModelOutput.
-        #print('input: ', inputs)
-        #print('input keys: ', [key for key in inputs])
-        #print('input keys shape: ', [inputs[key].shape for key in inputs])
-
-        #print('output: ', outputs)
-        #print('output keys: ', [key for key in outputs])
-        #print('output keys shape: ', [key.shape for key in outputs])
-
-        #print('----------------------')
-        #loss = outputs[0]
-        labels, pred = inputs["labels"].detach().cpu().numpy(), outputs[1].detach().cpu().numpy()
-        #print('1: ',pred.detach().cpu().numpy(), labels)
-        stats = self.compute_metrics(EvalPrediction(predictions=pred,
-                                                    label_ids=labels))['f1']
-        #print('stats: ', stats)
-        #self.log(stats)
-        #self.state.log_history.append(stats)##
-        #print('log history: ', self.state.log_history)##
-        return outputs[0], stats #outputs[0]
+        return outputs[0]
 
     def is_local_master(self) -> bool:
         """
@@ -1409,8 +1356,6 @@ class Trainer:
             xm.master_print(met.metrics_report())
 
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
-        output.metrics['steps'] = self.state.global_step
-        self.eval_stats.append(output.metrics)
         return output.metrics
 
     def predict(self, test_dataset: Dataset) -> PredictionOutput:
@@ -1442,10 +1387,8 @@ class Trainer:
             raise ValueError("test_dataset must implement __len__")
 
         test_dataloader = self.get_test_dataloader(test_dataset)
-        #### added
-        output = self.prediction_loop(test_dataloader, description="Prediction")
-        #self.log(output.metrics) ###
-        return output #self.prediction_loop(test_dataloader, description="Prediction")
+
+        return self.prediction_loop(test_dataloader, description="Prediction")
 
     def prediction_loop(
         self, dataloader: DataLoader, description: str, prediction_loss_only: Optional[bool] = None
@@ -1670,3 +1613,589 @@ class Trainer:
         else:
             model = model
         return model
+
+class MyTrainer(Trainer):
+    def __init__(
+        self,
+        model: Union[PreTrainedModel, torch.nn.Module] = None,
+        args: TrainingArguments = None,
+        data_collator: Optional[DataCollator] = None,
+        train_dataset: Optional[Dataset] = None,
+        eval_dataset: Optional[Dataset] = None,
+        tokenizer: Optional["PreTrainedTokenizerBase"] = None,
+        model_init: Callable[[], PreTrainedModel] = None,
+        compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
+        callbacks: Optional[List[TrainerCallback]] = None,
+        do_save_full_model: bool = True,
+        do_save_adapters: bool = False,
+        do_save_adapter_fusion: bool = False,
+        adapter_names: Optional[List[List[str]]] = None,
+        optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
+        **kwargs,
+    ):
+        if args is None:
+            logger.info("No `TrainingArguments` passed, using the current path as `output_dir`.")
+            args = TrainingArguments("tmp_trainer")
+        self.args = args
+        # Seed must be set before instantiating the model when using model
+        set_seed(self.args.seed)
+        assert (
+            model is not None or model_init is not None
+        ), "You must provide a model to use `Trainer`, either by using the `model` argument or the `model_init` argument."
+        self.model_init = model_init
+        self.hp_name = None
+        if model is None and model_init is not None:
+            model = self.call_model_init()
+        self.model = model.to(args.device) if model is not None else None
+        default_collator = default_data_collator if tokenizer is None else DataCollatorWithPadding(tokenizer)
+        self.data_collator = data_collator if data_collator is not None else default_collator
+        self.train_dataset = train_dataset
+        self.eval_dataset = eval_dataset
+        self.tokenizer = tokenizer
+
+        self.compute_metrics = compute_metrics
+        self.optimizer, self.lr_scheduler = optimizers
+        if model_init is not None and (self.optimizer is not None or self.lr_scheduler is not None):
+            raise RuntimeError(
+                "Passing a `model_init` is incompatible with providing the `optimizers` argument."
+                "You should subclass `Trainer` and override the `create_optimizer_and_scheduler` method."
+            )
+        callbacks = DEFAULT_CALLBACKS if callbacks is None else DEFAULT_CALLBACKS + callbacks
+        self.callback_handler = CallbackHandler(callbacks, self.model, self.optimizer, self.lr_scheduler)
+        self.add_callback(PrinterCallback if self.args.disable_tqdm else DEFAULT_PROGRESS_CALLBACK)
+
+        # Deprecated arguments
+        if "tb_writer" in kwargs:
+            warnings.warn(
+                "Passing `tb_writer` as a keyword argument is deprecated and won't be possible in a "
+                + "future version. Use `TensorBoardCallback(tb_writer=...)` instead and pass it to the `callbacks`"
+                + "argument",
+                FutureWarning,
+            )
+            tb_writer = kwargs.pop("tb_writer")
+            self.remove_callback(TensorBoardCallback)
+            self.add_callback(TensorBoardCallback(tb_writer=tb_writer))
+        if "prediction_loss_only" in kwargs:
+            warnings.warn(
+                "Passing `prediction_loss_only` as a keyword argument is deprecated and won't be possible in a "
+                + "future version. Use `args.prediction_loss_only` instead. Setting "
+                + f"`args.prediction_loss_only={kwargs['prediction_loss_only']}",
+                FutureWarning,
+            )
+            self.args.prediction_loss_only = kwargs.pop("prediction_loss_only")
+        assert kwargs == {}, f"Unexpected keyword arguments: {list(kwargs.keys())}."
+
+        # Will be set to True by `self._setup_loggers()` on first call to `self.log()`.
+        self._loggers_initialized = False
+
+        # Create output directory if needed
+        if self.is_world_process_zero():
+            os.makedirs(self.args.output_dir, exist_ok=True)
+        # adapters used
+        self.do_save_full_model = do_save_full_model
+        self.do_save_adapters = do_save_adapters
+        self.do_save_adapter_fusion = do_save_adapter_fusion
+        self.adapter_names = adapter_names
+        if is_torch_tpu_available() and isinstance(self.model, PreTrainedModel):
+            # Set an xla_device flag on the model's config.
+            # We'll find a more elegant and not need to do this in the future.
+            self.model.config.xla_device = True
+        if not callable(self.data_collator) and callable(getattr(self.data_collator, "collate_batch", None)):
+            self.data_collator = self.data_collator.collate_batch
+            warnings.warn(
+                (
+                    "The `data_collator` should now be a simple callable (function, class with `__call__`), classes "
+                    + "with a `collate_batch` are deprecated and won't be supported in a future version."
+                ),
+                FutureWarning,
+            )
+
+        if args.max_steps > 0:
+            logger.info("max_steps is given, it will override any value given in num_train_epochs")
+
+        # Enforce rules on using datasets with no __len__
+        if train_dataset is not None and not isinstance(train_dataset, collections.abc.Sized) and args.max_steps <= 0:
+            raise ValueError("train_dataset does not implement __len__, max_steps has to be specified")
+        if eval_dataset is not None and not isinstance(eval_dataset, collections.abc.Sized):
+            raise ValueError("eval_dataset must implement __len__")
+
+        if is_datasets_available():
+            if isinstance(train_dataset, datasets.Dataset):
+                self._remove_unused_columns(self.train_dataset, description="training")
+            if isinstance(eval_dataset, datasets.Dataset):
+                self._remove_unused_columns(self.eval_dataset, description="evaluation")
+
+        self.state = TrainerState()
+        self.control = TrainerControl()
+        self.stats = []
+        self.eval_stats = []
+        # Internal variable for total_flos used to count as tensors (for distributed + TPU), will be sent in the
+        # state at each call to self.log.
+        self._total_flos = None
+        if self.args.fp16 and _use_native_amp:
+            self.scaler = torch.cuda.amp.GradScaler()
+        self.hp_search_backend = None
+        self.use_tune_checkpoints = False
+        default_label_names = (
+            ["start_positions", "end_positions"]
+            if type(self.model) in MODEL_FOR_QUESTION_ANSWERING_MAPPING.values()
+            else ["labels"]
+        )
+        self.label_names = default_label_names if self.args.label_names is None else self.args.label_names
+        self.control = self.callback_handler.on_init_end(self.args, self.state, self.control)
+
+    def train(self, model_path: Optional[str] = None, trial: Union["optuna.Trial", Dict[str, Any]] = None):
+        """
+        Main training entry point.
+
+        Args:
+            model_path (:obj:`str`, `optional`):
+                Local path to the model if the model to train has been instantiated from a local path. If present,
+                training will resume from the optimizer/scheduler states loaded here.
+            trial (:obj:`optuna.Trial` or :obj:`Dict[str, Any]`, `optional`):
+                The trial run or the hyperparameter dictionary for hyperparameter search.
+        """
+        # This might change the seed so needs to run first.
+        self._hp_search_setup(trial)
+
+        # Model re-init
+        if self.model_init is not None:
+            # Seed must be set before instantiating the model when using model_init.
+            set_seed(self.args.seed)
+
+            model = self.call_model_init(trial)
+
+            self.model = model.to(self.args.device)
+
+            # Reinitializes optimizer and scheduler
+            self.optimizer, self.lr_scheduler = None, None
+
+        # Keeping track whether we can can len() on the dataset or not
+        train_dataset_is_sized = isinstance(self.train_dataset, collections.abc.Sized)
+
+        # Data loader and number of training steps
+        train_dataloader = self.get_train_dataloader()
+
+        # Setting up training control variables:
+        # number of training epochs: num_train_epochs
+        # number of training steps per epoch: num_update_steps_per_epoch
+        # total number of training steps to execute: max_steps
+        if train_dataset_is_sized:
+            num_update_steps_per_epoch = len(train_dataloader) // self.args.gradient_accumulation_steps
+            num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
+            if self.args.max_steps > 0:
+                max_steps = self.args.max_steps
+                num_train_epochs = self.args.max_steps // num_update_steps_per_epoch + int(
+                    self.args.max_steps % num_update_steps_per_epoch > 0
+                )
+            else:
+                max_steps = math.ceil(self.args.num_train_epochs * num_update_steps_per_epoch)
+                num_train_epochs = math.ceil(self.args.num_train_epochs)
+        else:
+            # see __init__. max_steps is set when the dataset has no __len__
+            max_steps = self.args.max_steps
+            num_train_epochs = 1
+            num_update_steps_per_epoch = max_steps
+
+        self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+        self.state = TrainerState()
+        self.state.is_hyper_param_search = trial is not None
+
+        # Check if saved optimizer or scheduler states exist
+        self._load_optimizer_and_scheduler(model_path)
+
+        # Mixed precision training with apex (torch < 1.6)
+        model = self.model
+        if self.args.fp16 and _use_apex:
+            if not is_apex_available():
+                raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+            model, self.optimizer = amp.initialize(model, self.optimizer, opt_level=self.args.fp16_opt_level)
+
+        # Multi-gpu training (should be after apex fp16 initialization)
+        if self.args.n_gpu > 1:
+            model = torch.nn.DataParallel(model)
+
+        # Distributed training (should be after apex fp16 initialization)
+        if self.args.local_rank != -1:
+            model = torch.nn.parallel.DistributedDataParallel(
+                model,
+                device_ids=[self.args.local_rank],
+                output_device=self.args.local_rank,
+                find_unused_parameters=(
+                    not getattr(model.config, "gradient_checkpointing", False)
+                    if isinstance(model, PreTrainedModel)
+                    else True
+                ),
+            )
+        # find_unused_parameters breaks checkpointing as per
+        # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+
+        # Train!
+        if is_torch_tpu_available():
+            total_train_batch_size = self.args.train_batch_size * xm.xrt_world_size()
+        else:
+            total_train_batch_size = (
+                self.args.train_batch_size
+                * self.args.gradient_accumulation_steps
+                * (torch.distributed.get_world_size() if self.args.local_rank != -1 else 1)
+            )
+
+        num_examples = (
+            self.num_examples(train_dataloader)
+            if train_dataset_is_sized
+            else total_train_batch_size * self.args.max_steps
+        )
+
+        logger.info("***** Running training *****")
+        logger.info("  Num examples = %d", num_examples)
+        logger.info("  Num Epochs = %d", num_train_epochs)
+        logger.info("  Instantaneous batch size per device = %d", self.args.per_device_train_batch_size)
+        logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d", total_train_batch_size)
+        logger.info("  Gradient Accumulation steps = %d", self.args.gradient_accumulation_steps)
+        logger.info("  Total optimization steps = %d", max_steps)
+
+        self.state.epoch = 0
+        epochs_trained = 0
+        steps_trained_in_current_epoch = 0
+
+        # Check if continuing training from a checkpoint
+        if model_path and os.path.isfile(os.path.join(model_path, "trainer_state.json")):
+            self.state = TrainerState.load_from_json(os.path.join(model_path, "trainer_state.json"))
+            epochs_trained = self.state.global_step // num_update_steps_per_epoch
+            steps_trained_in_current_epoch = self.state.global_step % (num_update_steps_per_epoch)
+
+            logger.info("  Continuing training from checkpoint, will skip to saved global_step")
+            logger.info("  Continuing training from epoch %d", epochs_trained)
+            logger.info("  Continuing training from global step %d", self.state.global_step)
+            logger.info("  Will skip the first %d steps in the first epoch", steps_trained_in_current_epoch)
+
+        # Update the references
+        self.callback_handler.model = self.model
+        self.callback_handler.optimizer = self.optimizer
+        self.callback_handler.lr_scheduler = self.lr_scheduler
+        self.callback_handler.train_dataloader = train_dataloader
+        self.state.trial_name = self.hp_name(trial) if self.hp_name is not None else None
+        self.state.trial_params = hp_params(trial) if trial is not None else None
+        # This should be the same if the state has been saved but in case the training arguments changed, it's safer
+        # to set this after the load.
+        self.state.max_steps = max_steps
+        self.state.num_train_epochs = num_train_epochs
+        self.state.is_local_process_zero = self.is_local_process_zero()
+        self.state.is_world_process_zero = self.is_world_process_zero()
+
+        tr_loss = torch.tensor(0.0).to(self.args.device)
+        loss = 0.0 ## loss
+        stats = 0.0 ## f1 score
+        self._logging_loss_scalar = 0
+        self._globalstep_last_logged = 0
+        self._total_flos = self.state.total_flos
+        model.zero_grad()
+
+        self.control = self.callback_handler.on_train_begin(self.args, self.state, self.control)
+
+        for epoch in range(epochs_trained, num_train_epochs):
+            if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
+                train_dataloader.sampler.set_epoch(epoch)
+
+            if is_torch_tpu_available():
+                parallel_loader = pl.ParallelLoader(train_dataloader, [self.args.device]).per_device_loader(
+                    self.args.device
+                )
+                epoch_iterator = parallel_loader
+            else:
+                epoch_iterator = train_dataloader
+
+            # Reset the past mems state at the beginning of each epoch if necessary.
+            if self.args.past_index >= 0:
+                self._past = None
+
+            steps_in_epoch = len(epoch_iterator) if train_dataset_is_sized else self.args.max_steps
+            self.control = self.callback_handler.on_epoch_begin(self.args, self.state, self.control)
+
+            # reset tracked values for each epoch
+            loss = 0.0  ## loss
+            stats = 0.0  ## f1 score
+
+            for step, inputs in enumerate(epoch_iterator):
+
+                # Skip past any already trained steps if resuming training
+                if steps_trained_in_current_epoch > 0:
+                    steps_trained_in_current_epoch -= 1
+                    continue
+
+                if (step + 1) % self.args.gradient_accumulation_steps == 0:
+                    self.control = self.callback_handler.on_step_begin(self.args, self.state, self.control)
+
+                if (
+                    ((step + 1) % self.args.gradient_accumulation_steps != 0)
+                    and self.args.local_rank != -1
+                    and _use_ddp_no_sync
+                ):
+                    with model.no_sync():
+                        loss_temp, stats_temp = self.training_step(model, inputs)
+                        tr_loss += loss_temp
+                        loss += loss_temp.detach().cpu().numpy()
+                        stats += stats_temp ## f1
+                else:
+                    loss_temp, stats_temp = self.training_step(model, inputs)
+                    tr_loss += loss_temp
+                    loss += loss_temp.detach().cpu().numpy()
+                    stats += stats_temp ## f1
+                self._total_flos += self.floating_point_ops(inputs)
+
+                if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
+                    # last step in epoch but step is always smaller than gradient_accumulation_steps
+                    steps_in_epoch <= self.args.gradient_accumulation_steps
+                    and (step + 1) == steps_in_epoch
+                ):
+                    # apply adapter fusion weight regularization on the value matrix
+                    if (
+                        hasattr(self.model.config, "adapter_fusion")
+                        and self.model.config.adapter_fusion["regularization"]
+                    ):
+                        fusion_reg_loss = get_fusion_regularization_loss(self.model)
+                        fusion_reg_loss.backward()
+
+                    if self.args.fp16 and _use_native_amp:
+                        self.scaler.unscale_(self.optimizer)
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
+                    elif self.args.fp16 and _use_apex:
+                        torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.args.max_grad_norm)
+                    else:
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
+
+                    if is_torch_tpu_available():
+                        xm.optimizer_step(self.optimizer)
+                    elif self.args.fp16 and _use_native_amp:
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        self.optimizer.step()
+
+                    self.lr_scheduler.step()
+                    model.zero_grad()
+                    self.state.global_step += 1
+                    self.state.epoch = epoch + (step + 1) / steps_in_epoch
+                    self.control = self.callback_handler.on_step_end(self.args, self.state, self.control)
+
+                    # log stats (train)
+                    self.log({"loss": loss, "f1": stats})
+
+                    # perform eval, log stats (eval)
+                    self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
+
+                    ## log stats: steps, loss, f1
+                    self.stats.append({"steps": self.state.global_step,
+                                                   "loss": loss,
+                                                   "f1": stats})
+
+                    # reset stats to record loss and f1 for each step
+                    loss = 0.0  ## loss
+                    stats = 0.0  ## f1 score
+                    #print('reset step: ', self.state.global_step, step)
+
+                if self.control.should_epoch_stop or self.control.should_training_stop:
+                    break
+
+            self.control = self.callback_handler.on_epoch_end(self.args, self.state, self.control)
+            self._maybe_log_save_evaluate(tr_loss, model, trial, epoch)
+
+            if self.args.tpu_metrics_debug or self.args.debug:
+                if is_torch_tpu_available():
+                    # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
+                    xm.master_print(met.metrics_report())
+                else:
+                    logger.warning(
+                        "You enabled PyTorch/XLA debug metrics but you don't have a TPU "
+                        "configured. Check your training configuration if this is unexpected."
+                    )
+            if self.control.should_training_stop:
+                break
+
+        if self.args.past_index and hasattr(self, "_past"):
+            # Clean the state at the end of training
+            delattr(self, "_past")
+
+        if self.do_save_adapters:
+            logger.info("\n\nTraining completed. Do not forget to share your adapters on https://adapterhub.ml =)\n\n")
+        else:
+            logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
+
+        if self.args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
+            logger.info(
+                f"Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric})."
+            )
+            if isinstance(model, PreTrainedModel):
+                state_dict = torch.load(os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME))
+                self.model.load_state_dict(state_dict)
+
+                # replace below scripts with above since forward pass excludes the final classification layer
+                # self.model = model.from_pretrained(self.state.best_model_checkpoint)
+                # self.model = self.model.to(self.args.device)
+            else:
+                state_dict = torch.load(os.path.join(self.state.best_model_checkpoint, WEIGHTS_NAME))
+                self.model.load_state_dict(state_dict)
+        if self._total_flos is not None:
+            self.store_flos()
+            self.log({"total_flos": self.state.total_flos})
+        self.control = self.callback_handler.on_train_end(self.args, self.state, self.control)
+        return TrainOutput(self.state.global_step, tr_loss.item() / self.state.global_step)
+
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+        """
+        Perform a training step on a batch of inputs.
+
+        Subclass and override to inject custom behavior.
+
+        Args:
+            model (:obj:`nn.Module`):
+                The model to train.
+            inputs (:obj:`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
+
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument :obj:`labels`. Check your model's documentation for all accepted arguments.
+
+        Return:
+            :obj:`torch.Tensor`: The tensor with training loss on this batch.
+        """
+        if hasattr(self, "_training_step"):
+            warnings.warn(
+                "The `_training_step` method is deprecated and won't be called in a future version, define `training_step` in your subclass.",
+                FutureWarning,
+            )
+            return self._training_step(model, inputs, self.optimizer)
+
+        model.train()
+        inputs = self._prepare_inputs(inputs)
+
+        if self.args.fp16 and _use_native_amp:
+            with autocast():
+                loss, stats = self.compute_loss(model, inputs) ## loss
+        else:
+            loss, stats = self.compute_loss(model, inputs) ## loss
+
+        if self.args.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+        if self.args.gradient_accumulation_steps > 1:
+            loss = loss / self.args.gradient_accumulation_steps
+            stats = stats / self.args.gradient_accumulation_steps
+
+        if self.args.fp16 and _use_native_amp:
+            self.scaler.scale(loss).backward()
+        elif self.args.fp16 and _use_apex:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            loss.backward()
+
+        return loss.detach(), stats
+
+    def compute_loss(self, model, inputs):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+
+        Subclass and override for custom behavior.
+        """
+        outputs = model(**inputs)
+        # Save past state if it exists
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+        # We don't use .loss here since the model may return tuples instead of ModelOutput.
+        #print('input: ', inputs)
+        #print('input keys: ', [key for key in inputs])
+        #print('input keys shape: ', [inputs[key].shape for key in inputs])
+
+        #print('output: ', outputs)
+        #print('output keys: ', [key for key in outputs])
+        #print('output keys shape: ', [key.shape for key in outputs])
+
+        #print('----------------------')
+        #loss = outputs[0]
+        labels, pred = inputs["labels"].detach().cpu().numpy(), outputs[1].detach().cpu().numpy()
+        #print('1: ',pred.detach().cpu().numpy(), labels)
+        stats = self.compute_metrics(EvalPrediction(predictions=pred,
+                                                    label_ids=labels))['f1']
+        #print('stats: ', stats)
+        #self.log(stats)
+        #self.state.log_history.append(stats)##
+        #print('log history: ', self.state.log_history)##
+        return outputs[0], stats #outputs[0]
+
+    def evaluate(self, eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
+        """
+        Run evaluation and returns metrics.
+
+        The calling script will be responsible for providing a method to compute metrics, as they are task-dependent
+        (pass it to the init :obj:`compute_metrics` argument).
+
+        You can also subclass and override this method to inject custom behavior.
+
+        Args:
+            eval_dataset (:obj:`Dataset`, `optional`):
+                Pass a dataset if you wish to override :obj:`self.eval_dataset`. If it is an :obj:`datasets.Dataset`,
+                columns not accepted by the ``model.forward()`` method are automatically removed. It must implement the
+                :obj:`__len__` method.
+
+        Returns:
+            A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
+            dictionary also contains the epoch number which comes from the training state.
+        """
+        if eval_dataset is not None and not isinstance(eval_dataset, collections.abc.Sized):
+            raise ValueError("eval_dataset must implement __len__")
+
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+
+        output = self.prediction_loop(
+            eval_dataloader,
+            description="Evaluation",
+            # No point gathering the predictions if there are no metrics, otherwise we defer to
+            # self.args.prediction_loss_only
+            prediction_loss_only=True if self.compute_metrics is None else None,
+        )
+
+        self.log(output.metrics)
+
+        if self.args.tpu_metrics_debug or self.args.debug:
+            # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
+            xm.master_print(met.metrics_report())
+
+        self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+        output.metrics['steps'] = self.state.global_step
+        self.eval_stats.append(output.metrics)
+        return output.metrics
+
+    def predict(self, test_dataset: Dataset) -> PredictionOutput:
+        """
+        Run prediction and returns predictions and potential metrics.
+
+        Depending on the dataset and your use case, your test dataset may contain labels. In that case, this method
+        will also return metrics, like in :obj:`evaluate()`.
+
+        Args:
+            test_dataset (:obj:`Dataset`):
+                Dataset to run the predictions on. If it is an :obj:`datasets.Dataset`, columns not accepted by the
+                ``model.forward()`` method are automatically removed. Has to implement the method :obj:`__len__`
+
+        .. note::
+
+            If your predictions or labels have different sequence length (for instance because you're doing dynamic
+            padding in a token classification task) the predictions will be padded (on the right) to allow for
+            concatenation into one array. The padding index is -100.
+
+        Returns: `NamedTuple` A namedtuple with the following keys:
+
+            - predictions (:obj:`np.ndarray`): The predictions on :obj:`test_dataset`.
+            - label_ids (:obj:`np.ndarray`, `optional`): The labels (if the dataset contained some).
+            - metrics (:obj:`Dict[str, float]`, `optional`): The potential dictionary of metrics (if the dataset
+              contained labels).
+        """
+        if test_dataset is not None and not isinstance(test_dataset, collections.abc.Sized):
+            raise ValueError("test_dataset must implement __len__")
+
+        test_dataloader = self.get_test_dataloader(test_dataset)
+        #### added
+        output = self.prediction_loop(test_dataloader, description="Prediction")
+        #self.log(output.metrics) ###
+        return output #self.prediction_loop(test_dataloader, description="Prediction")

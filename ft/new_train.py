@@ -19,9 +19,6 @@ import pickle
 import dataclasses
 import logging
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
-
 import sys
 import json
 import torch
@@ -44,7 +41,6 @@ from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import (
     HfArgumentParser,
     MultiLingAdapterArguments,
-    Trainer,
     TrainingArguments,
     glue_compute_metrics,
     glue_output_modes,
@@ -52,6 +48,7 @@ from transformers import (
     set_seed,
 )
 import transformers
+from trainer.trainer import MyTrainer
 from utils.plot_stats import plot_save_results
 
 transformers.logging.set_verbosity_info()
@@ -396,7 +393,7 @@ def main():
 
     # Initialize our Trainer
     if not adapter_args.train_adapter and not model_args.train_fusion:
-        trainer = Trainer(
+        trainer = MyTrainer(
             model=model,
             args=training_args,
             train_dataset=train_dataset,
@@ -407,7 +404,7 @@ def main():
     else:
         save_full = True
         if adapter_args.train_adapter:
-            trainer = Trainer(
+            trainer = MyTrainer(
                 model=model,
                 args=training_args,
                 train_dataset=train_dataset,
@@ -417,7 +414,7 @@ def main():
                 do_save_adapters=adapter_args.train_adapter,
             )
         else:
-            trainer = Trainer(
+            trainer = MyTrainer(
                 model=model,
                 args=training_args,
                 train_dataset=train_dataset,
@@ -495,8 +492,8 @@ def main():
     # save stats
 
     # Train stage
-    plot_save_results(trainer.stats, training_args.output_dir, training_args.num_train_epochs,
-                      stage='Train')
+    # plot_save_results(trainer.stats, training_args.output_dir, training_args.num_train_epochs,
+    #                  stage='Train')
     # Evaluation stage (including validation and test)
     # print(trainer.stats)
     # print(trainer.eval_stats)
