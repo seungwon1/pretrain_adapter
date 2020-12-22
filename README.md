@@ -18,3 +18,60 @@ pip install -r requirements.txt
 #### PreTraining
 
 #### FineTuning
+
+##### Baseline Roberta / TAPT
+```
+  --do_train \
+  --do_eval \
+  --data_dir datasets/hyperpartisan_news/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 2e-5 \
+  --num_train_epochs 10 \
+  --output_dir results/baseline/hyperpartisan_news \
+  --task_name hyperpartisan_news \
+  --do_predict \
+  --model_name_or_path roberta-base \
+  --metric macro \
+  --overwrite_output_dir \
+  --evaluation_strategy epoch \
+  --load_best_model_at_end \
+  --metric_for_best_model f1 \
+  --seed 7701 \
+  --patience 10 \
+```
+
+For baseline roberta, set model_name_or_path as roberta-base. To finetune TAPT, set model_name_or_path as the path where the pretrained model is saved.
+
+##### Adapter
+```
+python new_train.py \
+  --do_train \
+  --do_eval \
+  --data_dir datasets/hyperpartisan_news/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 1e-4 \
+  --num_train_epochs 10 \
+  --output_dir results/adapter/hyperpartisan_news/ \
+  --task_name hyperpartisan_news \
+  --do_predict \
+  --load_best_model_at_end \
+  --train_adapter \
+  --model_name_or_path pt_adapter/hyperpartisan_news/ \
+  --adapter_config pfeiffer \
+  --metric macro \
+  --overwrite_output_dir \
+  --evaluation_strategy epoch \
+  --load_best_model_at_end \
+  --metric_for_best_model f1 \
+  --sanity_check \
+  --seed 7701 \
+  --patience 10 \
+```
+For pre-trained adapter, set model_name_or_path as the path where the pretrained model is saved. To evaluate raw adapter, set model_name_or_path as roberta-base.
+
+
+
