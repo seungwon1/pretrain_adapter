@@ -123,7 +123,6 @@ python finetune/new_train.py \
   --evaluation_strategy epoch \
   --load_best_model_at_end \
   --metric_for_best_model f1 \
-  --sanity_check \
   --seed 7701 \
   --patience 10 \
 ```
@@ -132,7 +131,33 @@ For pre-trained adapter, set model_name_or_path as the path where the pretrained
 For more information about arguments, see
 https://github.com/Adapter-Hub/adapter-transformers/blob/master/src/transformers/adapter_training.py
 
-
+#### 3. Adapter fusion
+```
+python finetune/new_train.py \
+  --do_train \
+  --do_eval \
+  --data_dir datasets/hyperpartisan_news/ \
+  --max_seq_length 512 \
+  --per_device_train_batch_size 8 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 1e-4 \
+  --num_train_epochs 10 \
+  --output_dir results/fusion/hyperpartisan_news/ \
+  --task_name hyperpartisan_news \
+  --do_predict \
+  --load_best_model_at_end \
+  --train_fusion \
+  --model_name_or_path roberta-base \
+  --adapter_config pfeiffer \
+  --metric macro \
+  --fusion_adapter_path1 pt_adapter/hyperpartisan_news/ \
+  --fusion_adapter_path2 pt_adapter/imdb/ \
+  --overwrite_output_dir \
+  --evaluation_strategy epoch \
+  --metric_for_best_model f1 \
+  --seed 7701 \
+  --patience 10 \
+```
 
 
 
