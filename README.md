@@ -21,6 +21,7 @@ pip install -r requirements.txt
 
 ##### Baseline Roberta / TAPT
 ```
+python finetune/new_train.py \
   --do_train \
   --do_eval \
   --data_dir datasets/hyperpartisan_news/ \
@@ -46,7 +47,7 @@ For baseline roberta, set model_name_or_path as roberta-base. To finetune TAPT, 
 
 ##### Adapter
 ```
-python new_train.py \
+python finetune/new_train.py \
   --do_train \
   --do_eval \
   --data_dir datasets/hyperpartisan_news/ \
