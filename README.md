@@ -18,8 +18,12 @@ pip install -r requirements.txt
 #### PreTraining
 
 #### FineTuning
+After executing below commands, metrics such as loss or evaluation scores can be easily visualized using tensorboard.
+```
+tensorboard --logdir=runs/
+```
 
-##### Baseline Roberta / TAPT
+##### 1. Baseline Roberta / TAPT
 ```
 python finetune/new_train.py \
   --do_train \
@@ -45,7 +49,16 @@ python finetune/new_train.py \
 
 For baseline roberta, set model_name_or_path as roberta-base. To finetune TAPT, set model_name_or_path as the path where the pretrained model is saved.
 
-##### Adapter
+Args
+```
+evaluation_strategy : when to evaluate the model during training
+load_best_model_at_end, metric_for_best_model: load best model based on the metric specified from the checkpoints that are saved with respect to evaluation_strategy
+patience: the number of epochs which the metric get worse to be considered to execute early stopping
+```
+For more information about arguments, see
+https://github.com/Adapter-Hub/adapter-transformers/blob/master/src/transformers/training_args.py
+
+##### 2. Adapter
 ```
 python finetune/new_train.py \
   --do_train \
@@ -73,6 +86,11 @@ python finetune/new_train.py \
   --patience 10 \
 ```
 For pre-trained adapter, set model_name_or_path as the path where the pretrained model is saved. To evaluate raw adapter, set model_name_or_path as roberta-base.
+
+For more information about arguments, see
+https://github.com/Adapter-Hub/adapter-transformers/blob/master/src/transformers/adapter_training.py
+
+
 
 
 
