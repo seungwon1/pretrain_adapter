@@ -15,15 +15,57 @@ pip install -r requirements.txt
 - sklearn=0.23.2
 - tensorboard=2.4.0
 
-#### PreTraining
+## PreTraining
 
-#### FineTuning
+#### 1. TAPT
+```
+python pretrain.run_language_modeling --train_data_file datasets/chemprot/train.txt \
+  --line_by_line \
+  --output_dir tapt/roberta-tapt-acl-TAPT \
+  --model_type roberta-base \
+  --eval_data_file=datasets/citation_intent/test.txt \
+  --tokenizer_name roberta-base \
+  --mlm \
+  --per_gpu_train_batch_size 8 \
+  --gradient_accumulation_steps 32  \
+  --model_name_or_path roberta-base \
+  --do_eval \
+  --evaluate_during_training  \
+  --do_train \
+  --num_train_epochs 100  \
+  --learning_rate 0.0001 \
+  --logging_steps 900 \
+```
+
+#### 2. Adapter
+```
+python pretrain.run_language_modeling_with_adapters --train_data_file datasets/scierc/train.txt \
+  --line_by_line \
+  --output_dir tapt-adapter/scierc/ \
+  --model_type roberta-base \
+  --tokenizer_name roberta-base \
+  --mlm \
+  --per_gpu_train_batch_size 4 \
+  --gradient_accumulation_steps 64  \
+  --model_name_or_path roberta-base \
+  --do_eval \
+  --do_train \
+  --num_train_epochs 100  \
+  --learning_rate 0.0001 \
+  --logging_steps 900 \
+  --adapter_name=scierc \
+  --overwrite_output_dir \
+  --evaluate_during_training  \
+  --eval_data_file=datasets/scierc/dev.txt \
+```
+
+## FineTuning
 After executing below commands, metrics such as loss or evaluation scores can be easily visualized using tensorboard.
 ```
 tensorboard --logdir=runs/
 ```
 
-##### 1. Baseline Roberta / TAPT
+#### 1. Baseline Roberta / TAPT
 ```
 python finetune/new_train.py \
   --do_train \
@@ -58,7 +100,7 @@ patience: the number of epochs which the metric get worse to be considered to ex
 For more information about arguments, see
 https://github.com/Adapter-Hub/adapter-transformers/blob/master/src/transformers/training_args.py
 
-##### 2. Adapter
+#### 2. Adapter (pretrained/raw)
 ```
 python finetune/new_train.py \
   --do_train \
