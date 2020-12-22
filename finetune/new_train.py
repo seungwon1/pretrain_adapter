@@ -19,9 +19,6 @@ import pickle
 import dataclasses
 import logging
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
-
 import sys
 import json
 import torch
@@ -37,7 +34,6 @@ from transformers import (
     AutoModelWithHeads,
     AutoTokenizer,
     EvalPrediction,
-    GlueDataset,
     PretrainedConfig,
 )
 from transformers import GlueDataTrainingArguments as DataTrainingArguments
@@ -45,9 +41,6 @@ from transformers import (
     HfArgumentParser,
     MultiLingAdapterArguments,
     TrainingArguments,
-    glue_compute_metrics,
-    glue_output_modes,
-    glue_tasks_num_labels,
     set_seed,
 )
 import transformers
@@ -412,6 +405,7 @@ def main():
         )
     else:
         save_full = True
+
         if adapter_args.train_adapter:
             trainer = MyTrainer(
                 model=model,
@@ -421,6 +415,7 @@ def main():
                 compute_metrics=compute_metrics_ft,
                 do_save_full_model=save_full,
                 do_save_adapters=adapter_args.train_adapter,
+                callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
             )
         else:
             trainer = MyTrainer(
@@ -431,6 +426,7 @@ def main():
                 compute_metrics=compute_metrics_ft,
                 do_save_full_model=save_full,
                 do_save_adapter_fusion=True,
+                callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
             )
 
     # Training
@@ -446,7 +442,6 @@ def main():
             model_path=model_args.model_name_or_path if os.path.isdir(model_args.model_name_or_path) else None
         )
         trainer.save_model()
-        #print("stats history: ", len(trainer.stats), trainer.stats)
 
         # after finishing traning, save keys
         if data_args.sanity_check:
@@ -460,7 +455,8 @@ def main():
         if trainer.is_world_master():
             tokenizer.save_pretrained(training_args.output_dir)
 
-    # Evaluation
+    # Evaluation: Validation is done during training (e.g., after each epoch)
+    """
     eval_results = {}
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
@@ -480,6 +476,7 @@ def main():
                         writer.write("%s = %s\n" % (key, value))
 
             eval_results.update(eval_result)
+    """
 
     if training_args.do_predict:
         logging.info("*** Test ***")
@@ -498,21 +495,12 @@ def main():
                         logger.info("  %s = %s", key, value)
                         writer.write("%s = %s\n" % (key, value))
 
-    # save stats
-
-    # Train stage
-    # plot_save_results(trainer.stats, training_args.output_dir, training_args.num_train_epochs,
-    #                  stage='Train')
-    # Evaluation stage (including validation and test)
-    # print(trainer.stats)
-    # print(trainer.eval_stats)
-    return eval_results
+    return test_eval_result
 
 
 def _mp_fn(index):
     # For xla_spawn (TPUs)
     main()
-
 
 if __name__ == "__main__":
     main()
