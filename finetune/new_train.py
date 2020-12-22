@@ -52,6 +52,7 @@ from transformers import (
 )
 import transformers
 from trainer.trainer import MyTrainer
+from trainer.trainer_callback import EarlyStoppingCallback
 from utils.plot_stats import plot_save_results
 
 transformers.logging.set_verbosity_info()
@@ -124,6 +125,10 @@ class DataTrainingArguments:
     )
     validation_file: Optional[str] = field(
         default=None, metadata={"help": "A csv or a json file containing the validation data."}
+    )
+    patience_factor: int = field(
+        default=10,
+        metadata={"help": "The number of epochs to be considered to execute early stopping."}
     )
 
 
@@ -403,6 +408,7 @@ def main():
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics_ft,
             do_save_full_model=True,
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
         )
     else:
         save_full = True
