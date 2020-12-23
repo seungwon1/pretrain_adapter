@@ -19,6 +19,9 @@ import pickle
 import dataclasses
 import logging
 import os
+
+#os.environ["CUDA_VISIBLE_DEVICES"]="1"
+
 import sys
 import json
 import torch
@@ -36,6 +39,7 @@ from transformers import (
     EvalPrediction,
     PretrainedConfig,
 )
+from transformers.adapter_config import PfeifferConfig
 from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import (
     HfArgumentParser,
@@ -270,7 +274,8 @@ def main():
     #    np.save(training_args.output_dir + 'after_model_loaded.npy', bsw)  # Just used for sanity check, (500MB)
 
     if model_args.train_adapter_wop:
-        model.add_adapter(data_args.task_name, AdapterType.text_task)
+        model.add_adapter(data_args.task_name, AdapterType.text_task,
+                          config=PfeifferConfig(reduction_factor=adapter_args.adapter_reduction_factor))
         model.train_adapter([data_args.task_name])
         model.add_classification_head(data_args.task_name, num_labels=num_labels)
         model.set_active_adapters([[data_args.task_name]])
@@ -294,10 +299,9 @@ def main():
         while "" in fusion_path:
             fusion_path.remove("")
 
-        from transformers.adapter_config import PfeifferConfig
-
         for each in fusion_path:
-            model.load_adapter(each, "text_lang", config=PfeifferConfig(), with_head=False)
+            model.load_adapter(each, "text_lang",
+                               config=PfeifferConfig(reduction_factor=adapter_args.adapter_reduction_factor), with_head=False)
 
         ADAPTER_SETUP = [
             [

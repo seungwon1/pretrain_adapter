@@ -27,6 +27,7 @@ import argparse
 import glob
 import logging
 import os
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 import pickle
 import random
 import re
@@ -111,6 +112,7 @@ class TextDataset(Dataset):
 
 class LineByLineTextDataset(Dataset):
     def __init__(self, tokenizer: PreTrainedTokenizer, args, file_path: str, block_size=512):
+        print(file_path)
         assert os.path.isfile(file_path)
         # Here, we do not cache the features, operating under the assumption
         # that we will soon use fast multithreaded tokenizers from the
