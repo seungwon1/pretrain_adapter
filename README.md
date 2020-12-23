@@ -8,7 +8,7 @@ cd pretrain_adapter
 pip install -r requirements.txt
 ```
 
-##### (All experiments in the paper were performed with below dependencies)
+All experiments in the paper were performed with below dependencies.
 - python=3.6.8
 - torch=1.7.0
 - adapter-transformer=1.0.1
