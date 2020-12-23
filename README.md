@@ -19,7 +19,7 @@ pip install -r requirements.txt
 
 #### 1. TAPT
 ```
-python pretrain.run_language_modeling --train_data_file datasets/chemprot/train.txt \
+python run_language_modeling.py --train_data_file datasets/chemprot/train.txt \
   --line_by_line \
   --output_dir tapt/roberta-tapt-acl-TAPT \
   --model_type roberta-base \
@@ -39,7 +39,7 @@ python pretrain.run_language_modeling --train_data_file datasets/chemprot/train.
 
 #### 2. Adapter
 ```
-python pretrain.run_language_modeling_with_adapters --train_data_file datasets/scierc/train.txt \
+python run_language_modeling_with_adapters.py --train_data_file datasets/scierc/train.txt \
   --line_by_line \
   --output_dir tapt-adapter/scierc/ \
   --model_type roberta-base \
@@ -67,7 +67,7 @@ tensorboard --logdir=runs/
 
 #### 1. Baseline Roberta / TAPT
 ```
-python finetune/new_train.py \
+python new_train.py \
   --do_train \
   --do_eval \
   --data_dir datasets/hyperpartisan_news/ \
@@ -102,7 +102,7 @@ https://github.com/Adapter-Hub/adapter-transformers/blob/master/src/transformers
 
 #### 2. Adapter (pretrained/raw)
 ```
-python finetune/new_train.py \
+python new_train.py \
   --do_train \
   --do_eval \
   --data_dir datasets/hyperpartisan_news/ \
@@ -133,7 +133,7 @@ https://github.com/Adapter-Hub/adapter-transformers/blob/master/src/transformers
 
 #### 3. Adapter fusion
 ```
-python finetune/new_train.py \
+python new_train.py \
   --do_train \
   --do_eval \
   --data_dir datasets/hyperpartisan_news/ \
