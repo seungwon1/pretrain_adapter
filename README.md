@@ -94,6 +94,7 @@ python new_train.py \
   --patience 10 \
   --adapter_reduction_factor 16 \
   --save_total_limit 3 \
+  --logging_dir results/baseline/hyperpartisan_news \
 ```
 
 For baseline roberta, set model_name_or_path as roberta-base. To finetune TAPT, set model_name_or_path as the path where the pretrained model is saved.
@@ -105,6 +106,7 @@ load_best_model_at_end, metric_for_best_model: load best model based on the metr
 patience: the number of epochs in which the metric get worse to be considered to execute early stopping
 adapter_reduction_factor: reduction_factor to determine the network size of adapter layers
 save_total_limit: total number of checkpoints saved after validation 
+logging_dir: Tensorboard directory 
 ```
 For more information about arguments, see
 https://github.com/Adapter-Hub/adapter-transformers/blob/master/src/transformers/training_args.py
@@ -135,6 +137,7 @@ python new_train.py \
   --load_best_model_at_end \
   --metric_for_best_model f1 \
   --save_total_limit 3 \
+  --logging_dir results/baseline/hyperpartisan_news \
 ```
 For pre-trained adapter, set model_name_or_path as the path where the pretrained model is saved. To evaluate raw adapter, set model_name_or_path as roberta-base.
 
@@ -168,6 +171,7 @@ python new_train.py \
   --metric_for_best_model f1 \
   --overwrite_output_dir \
   --save_total_limit 3 \
+  --logging_dir results/baseline/hyperpartisan_news \
 ```
 
 
