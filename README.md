@@ -137,7 +137,7 @@ python new_train.py \
   --load_best_model_at_end \
   --metric_for_best_model f1 \
   --save_total_limit 3 \
-  --logging_dir results/baseline/hyperpartisan_news \
+  --logging_dir results/adapter/hyperpartisan_news \
 ```
 For pre-trained adapter, set model_name_or_path as the path where the pretrained model is saved. To evaluate raw adapter, set model_name_or_path as roberta-base.
 
@@ -171,7 +171,7 @@ python new_train.py \
   --metric_for_best_model f1 \
   --overwrite_output_dir \
   --save_total_limit 3 \
-  --logging_dir results/baseline/hyperpartisan_news \
+  --logging_dir results/fusion/hyperpartisan_news \
 ```
 
 
