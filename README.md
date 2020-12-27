@@ -23,11 +23,11 @@ tensorboard --logdir=runs/
 
 #### 1. TAPT
 ```
-python run_language_modeling.py --train_data_file datasets/chemprot/train.txt \
+python run_language_modeling.py --train_data_file datasets/rct-20k/train.txt \
   --line_by_line \
-  --output_dir tapt/roberta-tapt-acl-TAPT \
+  --output_dir tapt/roberta-tapt-rct-20k \
   --model_type roberta-base \
-  --eval_data_file=datasets/citation_intent/test.txt \
+  --eval_data_file=datasets/rct-20k/test.txt \
   --tokenizer_name roberta-base \
   --mlm \
   --per_gpu_train_batch_size 8 \
@@ -40,6 +40,7 @@ python run_language_modeling.py --train_data_file datasets/chemprot/train.txt \
   --learning_rate 0.0001 \
   --logging_steps 900 \
   --adapter_reduction_factor 16 \
+  --logging_dir runs/tapt/rct-20k \
 ```
 
 #### 2. Adapter
@@ -63,6 +64,7 @@ python run_language_modeling_with_adapters.py --train_data_file datasets/scierc/
   --evaluate_during_training  \
   --eval_data_file=datasets/scierc/dev.txt \
   --adapter_reduction_factor 16 \
+  --logging_dir runs/adapter/scierc \
 ```
 
 ## FineTuning
@@ -94,7 +96,7 @@ python new_train.py \
   --patience 10 \
   --adapter_reduction_factor 16 \
   --save_total_limit 3 \
-  --logging_dir results/baseline/hyperpartisan_news \
+  --logging_dir runs/baseline/hyperpartisan_news \
 ```
 
 For baseline roberta, set model_name_or_path as roberta-base. To finetune TAPT, set model_name_or_path as the path where the pretrained model is saved.
@@ -137,7 +139,7 @@ python new_train.py \
   --load_best_model_at_end \
   --metric_for_best_model f1 \
   --save_total_limit 3 \
-  --logging_dir results/adapter/hyperpartisan_news \
+  --logging_dir runs/adapter/hyperpartisan_news \
 ```
 For pre-trained adapter, set model_name_or_path as the path where the pretrained model is saved. To evaluate raw adapter, set model_name_or_path as roberta-base.
 
@@ -171,7 +173,7 @@ python new_train.py \
   --metric_for_best_model f1 \
   --overwrite_output_dir \
   --save_total_limit 3 \
-  --logging_dir results/fusion/hyperpartisan_news \
+  --logging_dir runs/fusion/hyperpartisan_news \
 ```
 
 
