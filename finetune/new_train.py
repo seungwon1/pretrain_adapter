@@ -20,7 +20,7 @@ import dataclasses
 import logging
 import os
 
-#os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 import sys
 import json
@@ -50,7 +50,6 @@ from transformers import (
 import transformers
 from trainer.trainer import MyTrainer
 from trainer.trainer_callback import EarlyStoppingCallback
-from utils.plot_stats import plot_save_results
 
 transformers.logging.set_verbosity_info()
 logger = logging.getLogger(__name__)
@@ -379,18 +378,10 @@ def main():
     test_dataset = FTDataset(test_encodings, test_labels)
 
     def compute_metrics_ft(pred):
-        #print('pred: ', pred)
-        #for each in pred:
-        #    print(each.shape)
         labels = pred.label_ids
-        #print('labels: ', labels)
         preds = pred.predictions.argmax(-1)
-        #print('preds: ', preds)
-        #print(labels, preds)
         precision, recall, f1, _ = precision_recall_fscore_support(
             labels, preds, average=data_args.metric, labels=[i for i in range(num_labels)], zero_division=0)
-        #print('f1: ', f1)
-        #print('////////')
         acc = accuracy_score(labels, preds)
         return {"accuracy": acc, "f1": f1, "precision": precision, "recall": recall}
 

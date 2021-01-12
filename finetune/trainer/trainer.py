@@ -51,7 +51,7 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 
-from transformers.adapter_bert import get_fusion_regularization_loss
+from transformers.adapter_modeling import get_fusion_regularization_loss
 from transformers.data.data_collator import DataCollator, DataCollatorWithPadding, default_data_collator
 from transformers.file_utils import WEIGHTS_NAME, is_datasets_available, is_in_notebook, is_torch_tpu_available
 from transformers.modeling_auto import MODEL_FOR_QUESTION_ANSWERING_MAPPING
