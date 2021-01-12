@@ -15,6 +15,8 @@ All experiments in the paper were performed with below dependencies.
 - sklearn=0.23.2
 - tensorboard=2.4.0
 
+Hardware Specification: NVIDIA RTX 3090
+
 ## PreTraining
 After executing the below commands, the perplexity of LM evaluated after each epoch can be easily visualized using tensorboard.
 ```
