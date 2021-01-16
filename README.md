@@ -41,8 +41,6 @@ python run_language_modeling.py --train_data_file datasets/rct-20k/train.txt \
   --num_train_epochs 100  \
   --learning_rate 0.0001 \
   --logging_steps 900 \
-  --adapter_reduction_factor 16 \
-  --logging_dir runs/tapt/rct-20k \
 ```
 
 #### 2. Adapter
@@ -65,8 +63,6 @@ python run_language_modeling_with_adapters.py --train_data_file datasets/scierc/
   --overwrite_output_dir \
   --evaluate_during_training  \
   --eval_data_file=datasets/scierc/dev.txt \
-  --adapter_reduction_factor 16 \
-  --logging_dir runs/adapter/scierc \
 ```
 
 ## FineTuning
