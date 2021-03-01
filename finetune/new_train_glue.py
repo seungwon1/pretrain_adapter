@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from typing import Dict, Optional
 import numpy as np
+from datasets import load_dataset, load_metric # for glue tasks
 
 from transformers import (
     AdapterConfig,
@@ -37,6 +38,7 @@ from transformers import (
     AutoTokenizer,
     EvalPrediction,
     PretrainedConfig,
+    default_data_collator,
 )
 from transformers.adapter_config import PfeifferConfig
 from transformers import GlueDataTrainingArguments as DataTrainingArguments
@@ -53,6 +55,19 @@ from trainer.trainer_callback import EarlyStoppingCallback
 transformers.logging.set_verbosity_info()
 logger = logging.getLogger(__name__)
 
+task_to_keys = {
+    "cola": ("sentence", None),
+    "mnli": ("premise", "hypothesis"),
+    "mrpc": ("sentence1", "sentence2"),
+    "qnli": ("question", "sentence"),
+    "qqp": ("question1", "question2"),
+    "rte": ("sentence1", "sentence2"),
+    "sst2": ("sentence", None),
+    "stsb": ("sentence1", "sentence2"),
+    "wnli": ("sentence1", "sentence2"),
+}
+
+glue_list = ["COLA", "MNLI", "MRPC", "QNLI", "QQP", "RTE", "SST2", "STSB", "WNLI"]
 
 @dataclass
 class ModelArguments:
@@ -83,6 +98,11 @@ class ModelArguments:
     fusion_adapter_path6: Optional[str] = field(default="", metadata={"help": "adapters for fusion"})
     fusion_adapter_path7: Optional[str] = field(default="", metadata={"help": "adapters for fusion"})
     fusion_adapter_path8: Optional[str] = field(default="", metadata={"help": "adapters for fusion"})
+
+    use_fast_tokenizer: bool = field(
+        default=True,
+        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
+    )
 
 
 @dataclass
@@ -125,6 +145,28 @@ class DataTrainingArguments:
         default=10,
         metadata={"help": "The number of epochs to be considered to execute early stopping."}
     )
+
+    pad_to_max_length: bool = field(
+        default=True,
+        metadata={
+            "help": "Whether to pad all samples to `max_seq_length`. "
+                    "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+        },
+    )
+
+    def __post_init__(self):
+        if self.task_name is not None:
+            self.task_name = self.task_name.lower()
+            if self.task_name not in task_to_keys.keys():
+                raise ValueError("Unknown task, you should pick one in " + ",".join(task_to_keys.keys()))
+        elif self.train_file is None or self.validation_file is None:
+            raise ValueError("Need either a GLUE task or a training/validation file.")
+        else:
+            extension = self.train_file.split(".")[-1]
+            assert extension in ["csv", "json"], "`train_file` should be a csv or a json file."
+            extension = self.validation_file.split(".")[-1]
+            assert extension in ["csv", "json"], "`validation_file` should be a csv or a json file."
+
 
 
 def main():
@@ -171,6 +213,9 @@ def main():
     # Set seed
     set_seed(training_args.seed)
     data_dir = data_args.data_dir
+
+    # datasets setup
+    # 1. don't stop pre-training
 
     # label to id, set same as in don't stop repo
     label_to_id_ft = {}
@@ -243,6 +288,48 @@ def main():
 
     output_mode = "classification"
 
+
+
+    # 2. GLUE tasks
+    if data_args.task_name is not None:
+        # Downloading and loading a dataset from the hub.
+        datasets = load_dataset("glue", data_args.task_name)
+    elif data_args.train_file.endswith(".csv"):
+        # Loading a dataset from local csv files
+        datasets = load_dataset(
+            "csv", data_files={"train": data_args.train_file, "validation": data_args.validation_file}
+        )
+    else:
+        # Loading a dataset from local json files
+        datasets = load_dataset(
+            "json", data_files={"train": data_args.train_file, "validation": data_args.validation_file}
+        )
+
+    # Labels
+    label_list = None
+    if data_args.task_name is not None:
+        is_regression = data_args.task_name == "stsb"
+        if not is_regression:
+            label_list = datasets["train"].features["label"].names
+            num_labels = len(label_list)
+        else:
+            num_labels = 1
+    else:
+        # Trying to have good defaults here, don't hesitate to tweak to your needs.
+        is_regression = datasets["train"].features["label"].dtype in ["float32", "float64"]
+        if is_regression:
+            num_labels = 1
+        else:
+            # A useful fast method:
+            # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.unique
+            label_list = datasets["train"].unique("label")
+            label_list.sort()  # Let's sort it for determinism
+            num_labels = len(label_list)
+
+
+
+
+
     # Load pretrained model and tokenizer
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
@@ -257,7 +344,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
-    )
+    ) # use_fast=model_args.use_fast_tokenizer,
+
     model = AutoModelWithHeads.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -275,12 +363,24 @@ def main():
         model.add_adapter(data_args.task_name, AdapterType.text_task,
                           config=PfeifferConfig(reduction_factor=adapter_args.adapter_reduction_factor))
         model.train_adapter([data_args.task_name])
-        model.add_classification_head(data_args.task_name, num_labels=num_labels)
+        if data_args.task_name in glue_list:
+            model.add_classification_head(data_args.task_name, num_labels=num_labels,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          )
+
+        else:
+            model.add_classification_head(data_args.task_name, num_labels=num_labels)
+        # Set the adapters to be used in every forward pass
         model.set_active_adapters([[data_args.task_name]])
 
     elif adapter_args.train_adapter:
         model.train_adapter(model.config.adapters.adapter_list(AdapterType.text_lang)[0])  ###model.train_adapter([task_name])
-        model.add_classification_head(model.config.adapters.adapter_list(AdapterType.text_lang)[0], num_labels=num_labels)
+        if data_args.task_name in glue_list:
+            model.add_classification_head(data_args.task_name, num_labels=num_labels,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          )
+        else:
+            model.add_classification_head(model.config.adapters.adapter_list(AdapterType.text_lang)[0], num_labels=num_labels)
         # Set the adapters to be used in every forward pass
         model.set_active_adapters(model.config.adapters.adapter_list(AdapterType.text_lang)[0])
 
@@ -313,10 +413,20 @@ def main():
         logger.info(f"Model adapters = {ADAPTER_SETUP}")
         model.add_fusion(ADAPTER_SETUP[0], "dynamic")
         model.train_fusion(ADAPTER_SETUP)
-        model.add_classification_head(data_args.task_name, num_labels=num_labels)
+        if data_args.task_name in glue_list:
+            model.add_classification_head(data_args.task_name, num_labels=num_labels,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          )
+        else:
+            model.add_classification_head(data_args.task_name, num_labels=num_labels)
 
     else:
-        model.add_classification_head(data_args.task_name, num_labels=num_labels)
+        if data_args.task_name in glue_list:
+            model.add_classification_head(data_args.task_name, num_labels=num_labels,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          )
+        else:
+            model.add_classification_head(data_args.task_name, num_labels=num_labels)
 
     #if data_args.sanity_check:
     #    bsw = {}
@@ -330,59 +440,128 @@ def main():
     #        bsw[i] = model.state_dict()[i]
     #    np.save('after_fusion_merged.npy', bsw)  # Just used for sanity check, (500MB)
 
-    ### load dataset, define compute_metrics ###
-    data_dir = data_args.data_dir
-    train_texts = []
-    train_labels = []
-    val_texts = []
-    val_labels = []
-    test_texts = []
-    test_labels = []
+    # preprocess data for glue tasks
+    if data_args.task_name in glue_list:
+        sentence1_key, sentence2_key = task_to_keys[data_args.task_name]
+        # Padding strategy
+        if data_args.pad_to_max_length:
+            padding = "max_length"
+            max_length = data_args.max_seq_length
+        else:
+            # We will pad later, dynamically at batch creation, to the max sequence length in each batch
+            padding = False
+            max_length = None
 
-    if data_dir[-1] != "/":
-        data_dir += "/"
+        label_to_id = None
+        if (
+                model.config.label2id != PretrainedConfig(num_labels=num_labels).label2id
+                and data_args.task_name is not None
+                and is_regression
+        ):
+            # Some have all caps in their config, some don't.
+            label_name_to_id = {k.lower(): v for k, v in model.config.label2id.items()}
+            if list(sorted(label_name_to_id.keys())) == list(sorted(label_list)):
+                label_to_id = {i: label_name_to_id[label_list[i]] for i in range(num_labels)}
+            else:
+                logger.warn(
+                    "Your model seems to have been trained with labels, but they don't match the dataset: ",
+                    f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels: {list(sorted(label_list))}."
+                    "\nIgnoring the model labels as a result.",
+                )
+        elif data_args.task_name is None:
+            label_to_id = {v: i for i, v in enumerate(label_list)}
 
-    for each in ["train", "dev", "test"]:
-        with open(data_dir + each + ".jsonl", "r", encoding="utf-8") as f:
-            for line in f:
-                if each == "train":
-                    train_texts.append(json.loads(line)["text"])
-                    train_labels.append(label_to_id_ft[json.loads(line)["label"]])
-                elif each == "dev":
-                    val_texts.append(json.loads(line)["text"])
-                    val_labels.append(label_to_id_ft[json.loads(line)["label"]])
-                else:
-                    test_texts.append(json.loads(line)["text"])
-                    test_labels.append(label_to_id_ft[json.loads(line)["label"]])
+        def preprocess_function(examples):
+            # Tokenize the texts
+            args = (
+                (examples[sentence1_key],) if sentence2_key is None else (
+                examples[sentence1_key], examples[sentence2_key])
+            )
+            result = tokenizer(*args, padding=padding, max_length=max_length, truncation=True)
 
-    train_encodings = tokenizer(train_texts, padding="max_length", max_length=512, truncation=True)
-    val_encodings = tokenizer(val_texts, padding="max_length", max_length=512, truncation=True)
-    test_encodings = tokenizer(test_texts, padding="max_length", max_length=512, truncation=True)
+            # Map labels to IDs (not necessary for GLUE tasks)
+            if label_to_id is not None and "label" in examples:
+                result["label"] = [label_to_id[l] for l in examples["label"]]
+            return result
 
-    class FTDataset(torch.utils.data.Dataset):
-        def __init__(self, encodings, labels):
-            self.encodings = encodings
-            self.labels = labels
+        datasets = datasets.map(preprocess_function, batched=True, load_from_cache_file=not data_args.overwrite_cache)
 
-        def __getitem__(self, idx):
-            item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-            item["labels"] = torch.tensor(self.labels[idx])
-            return item
+        train_dataset = datasets["train"]
+        eval_dataset = datasets["validation_matched" if data_args.task_name == "mnli" else "validation"]
+        if data_args.task_name is not None:
+            test_dataset = datasets["test_matched" if data_args.task_name == "mnli" else "test"]
 
-        def __len__(self):
-            return len(self.labels)
+        # Get the metric function
+        if data_args.task_name is not None:
+            metric = load_metric("glue", data_args.task_name)
 
-    train_dataset = FTDataset(train_encodings, train_labels)
-    eval_dataset = FTDataset(val_encodings, val_labels)
-    test_dataset = FTDataset(test_encodings, test_labels)
+        def compute_metrics_ft(p: EvalPrediction):
+            preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
+            preds = np.squeeze(preds) if is_regression else np.argmax(preds, axis=1)
+            if data_args.task_name is not None:
+                result = metric.compute(predictions=preds, references=p.label_ids)
+                if len(result) > 1:
+                    result["combined_score"] = np.mean(list(result.values())).item()
+                return result
+            elif is_regression:
+                return {"mse": ((preds - p.label_ids) ** 2).mean().item()}
+            else:
+                return {"accuracy": (preds == p.label_ids).astype(np.float32).mean().item()}
 
-    def compute_metrics_ft(pred):
-        labels = pred.label_ids
-        preds = pred.predictions.argmax(-1)
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            labels, preds, average=data_args.metric, labels=[i for i in range(num_labels)], zero_division=0)
-        acc = accuracy_score(labels, preds)
-        return {"accuracy": acc, "f1": f1, "precision": precision, "recall": recall}
+    else:
+        ### load dataset, define compute_metrics ###
+        data_dir = data_args.data_dir
+        train_texts = []
+        train_labels = []
+        val_texts = []
+        val_labels = []
+        test_texts = []
+        test_labels = []
+
+        if data_dir[-1] != "/":
+            data_dir += "/"
+
+        for each in ["train", "dev", "test"]:
+            with open(data_dir + each + ".jsonl", "r", encoding="utf-8") as f:
+                for line in f:
+                    if each == "train":
+                        train_texts.append(json.loads(line)["text"])
+                        train_labels.append(label_to_id_ft[json.loads(line)["label"]])
+                    elif each == "dev":
+                        val_texts.append(json.loads(line)["text"])
+                        val_labels.append(label_to_id_ft[json.loads(line)["label"]])
+                    else:
+                        test_texts.append(json.loads(line)["text"])
+                        test_labels.append(label_to_id_ft[json.loads(line)["label"]])
+
+        train_encodings = tokenizer(train_texts, padding="max_length", max_length=512, truncation=True)
+        val_encodings = tokenizer(val_texts, padding="max_length", max_length=512, truncation=True)
+        test_encodings = tokenizer(test_texts, padding="max_length", max_length=512, truncation=True)
+
+        class FTDataset(torch.utils.data.Dataset):
+            def __init__(self, encodings, labels):
+                self.encodings = encodings
+                self.labels = labels
+
+            def __getitem__(self, idx):
+                item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+                item["labels"] = torch.tensor(self.labels[idx])
+                return item
+
+            def __len__(self):
+                return len(self.labels)
+
+        train_dataset = FTDataset(train_encodings, train_labels)
+        eval_dataset = FTDataset(val_encodings, val_labels)
+        test_dataset = FTDataset(test_encodings, test_labels)
+
+        def compute_metrics_ft(pred):
+            labels = pred.label_ids
+            preds = pred.predictions.argmax(-1)
+            precision, recall, f1, _ = precision_recall_fscore_support(
+                labels, preds, average=data_args.metric, labels=[i for i in range(num_labels)], zero_division=0)
+            acc = accuracy_score(labels, preds)
+            return {"accuracy": acc, "f1": f1, "precision": precision, "recall": recall}
 
     #############################
 
@@ -397,6 +576,20 @@ def main():
             do_save_full_model=True,
             callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
         )
+        if data_args.task_name in glue_list:
+            trainer = MyTrainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset if training_args.do_eval else None,
+                do_save_full_model=True,
+                compute_metrics=compute_metrics_ft,
+                tokenizer=tokenizer,
+                # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
+                data_collator=default_data_collator if data_args.pad_to_max_length else None,
+                callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
+            )
+
     else:
         save_full = True
 
@@ -411,6 +604,23 @@ def main():
                 do_save_adapters=adapter_args.train_adapter,
                 callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
             )
+            if data_args.task_name in glue_list:
+                trainer = MyTrainer(
+                    model=model,
+                    args=training_args,
+                    train_dataset=train_dataset,
+                    eval_dataset=eval_dataset,
+                    compute_metrics=compute_metrics_ft,
+                    tokenizer=tokenizer,
+                    # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
+                    data_collator=default_data_collator if data_args.pad_to_max_length else None,
+                    do_save_full_model=save_full,
+                    do_save_adapters=adapter_args.train_adapter,
+                    callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
+                )
+
+
+
         else:
             trainer = MyTrainer(
                 model=model,
@@ -422,6 +632,21 @@ def main():
                 do_save_adapter_fusion=True,
                 callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
             )
+
+            if data_args.task_name in glue_list:
+                trainer = MyTrainer(
+                    model=model,
+                    args=training_args,
+                    train_dataset=train_dataset,
+                    eval_dataset=eval_dataset,
+                    compute_metrics=compute_metrics_ft,
+                    do_save_full_model=save_full,
+                    do_save_adapter_fusion=True,
+                    # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
+                    data_collator=default_data_collator if data_args.pad_to_max_length else None,
+                    tokenizer=tokenizer,
+                    callbacks=[EarlyStoppingCallback(early_stopping_patience=data_args.patience_factor)]
+                )
 
     # Training
     if training_args.do_train:
@@ -450,7 +675,7 @@ def main():
             tokenizer.save_pretrained(training_args.output_dir)
 
     # Evaluation: Validation is done during training (e.g., after each epoch)
-    """
+
     eval_results = {}
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
@@ -470,7 +695,7 @@ def main():
                         writer.write("%s = %s\n" % (key, value))
 
             eval_results.update(eval_result)
-    """
+
 
     if training_args.do_predict:
         logging.info("*** Test ***")
