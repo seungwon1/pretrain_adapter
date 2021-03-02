@@ -680,39 +680,88 @@ def main():
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
 
+        # Loop to handle MNLI double evaluation (matched, mis-matched)
+        tasks = [data_args.task_name]
+
         eval_datasets = [eval_dataset]
-        for eval_dataset in eval_datasets:
-            eval_result = trainer.evaluate(eval_dataset=eval_dataset)
-            output_eval_file = os.path.join(training_args.output_dir, f"eval_results_{data_args.task_name}.txt")
 
-            if trainer.is_world_master():
-                with open(output_eval_file, "w") as writer:
-                    logger.info(
-                        "***** Eval results {} *****".format(data_args.task_name)
-                    )  ####eval_dataset.args.task_name))
-                    for key, value in eval_result.items():
-                        logger.info("  %s = %s", key, value)
-                        writer.write("%s = %s\n" % (key, value))
+        if data_args.task_name == "mnli":
+            tasks.append("mnli-mm")
+            eval_datasets.append(datasets["validation_mismatched"])
 
-            eval_results.update(eval_result)
+        if data_args.task_name in glue_list:
+            for eval_dataset, task in zip(eval_datasets, tasks):
+                eval_result = trainer.evaluate(eval_dataset=eval_dataset)
+
+                output_eval_file = os.path.join(training_args.output_dir, f"eval_results_{task}.txt")
+                if trainer.is_world_process_zero():
+                    with open(output_eval_file, "w") as writer:
+                        logger.info(f"***** Eval results {task} *****")
+                        for key, value in eval_result.items():
+                            logger.info(f"  {key} = {value}")
+                            writer.write(f"{key} = {value}\n")
+
+                eval_results.update(eval_result)
+
+        else:
+            for eval_dataset in eval_datasets:
+                eval_result = trainer.evaluate(eval_dataset=eval_dataset)
+                output_eval_file = os.path.join(training_args.output_dir, f"eval_results_{data_args.task_name}.txt")
+
+                if trainer.is_world_master():
+                    with open(output_eval_file, "w") as writer:
+                        logger.info(
+                            "***** Eval results {} *****".format(data_args.task_name)
+                        )  ####eval_dataset.args.task_name))
+                        for key, value in eval_result.items():
+                            logger.info("  %s = %s", key, value)
+                            writer.write("%s = %s\n" % (key, value))
+
+                eval_results.update(eval_result)
 
 
     if training_args.do_predict:
         logging.info("*** Test ***")
+
+        # Loop to handle MNLI double evaluation (matched, mis-matched)
+        tasks = [data_args.task_name]
         test_datasets = [test_dataset]
+        if data_args.task_name == "mnli":
+            tasks.append("mnli-mm")
+            test_datasets.append(datasets["test_mismatched"])
 
-        for test_dataset in test_datasets:
-            test_eval_result = trainer.predict(test_dataset=test_dataset).metrics
-            output_test_eval_file = os.path.join(training_args.output_dir, f"test_results_{data_args.task_name}.txt")
+        if data_args.task_name in glue_list:
+            for test_dataset, task in zip(test_datasets, tasks):
+                # Removing the `label` columns because it contains -1 and Trainer won't like that.
+                test_dataset.remove_columns_("label")
+                predictions = trainer.predict(test_dataset=test_dataset).predictions
+                predictions = np.squeeze(predictions) if is_regression else np.argmax(predictions, axis=1)
 
-            if trainer.is_world_master():
-                with open(output_test_eval_file, "w") as writer:
-                    logger.info(
-                        "***** Test results {} *****".format(data_args.task_name)
-                    )  ####eval_dataset.args.task_name))
-                    for key, value in test_eval_result.items():
-                        logger.info("  %s = %s", key, value)
-                        writer.write("%s = %s\n" % (key, value))
+                output_test_file = os.path.join(training_args.output_dir, f"test_results_{task}.txt")
+                if trainer.is_world_process_zero():
+                    with open(output_test_file, "w") as writer:
+                        logger.info(f"***** Test results {task} *****")
+                        writer.write("index\tprediction\n")
+                        for index, item in enumerate(predictions):
+                            if is_regression:
+                                writer.write(f"{index}\t{item:3.3f}\n")
+                            else:
+                                item = label_list[item]
+                                writer.write(f"{index}\t{item}\n")
+
+        else:
+            for test_dataset in test_datasets:
+                test_eval_result = trainer.predict(test_dataset=test_dataset).metrics
+                output_test_eval_file = os.path.join(training_args.output_dir, f"test_results_{data_args.task_name}.txt")
+
+                if trainer.is_world_master():
+                    with open(output_test_eval_file, "w") as writer:
+                        logger.info(
+                            "***** Test results {} *****".format(data_args.task_name)
+                        )  ####eval_dataset.args.task_name))
+                        for key, value in test_eval_result.items():
+                            logger.info("  %s = %s", key, value)
+                            writer.write("%s = %s\n" % (key, value))
 
     return test_eval_result
 
