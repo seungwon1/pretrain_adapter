@@ -14,6 +14,7 @@ All experiments in the paper were performed with below dependencies.
 - adapter-transformer=1.1.0
 - sklearn=0.23.2
 - tensorboard=2.4.0
+- datasets=1.4.1
 
 Hardware Specification: NVIDIA RTX 3090
 
