@@ -28,7 +28,9 @@ from dataclasses import dataclass, field
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from typing import Dict, Optional
 import numpy as np
-from datasets import load_dataset, load_metric # for glue tasks
+from datasets import load_dataset, load_metric #for glue tasks
+
+#os.environ["CUDA_VISIBLE_DEVICES"]= "2"
 
 from transformers import (
     AdapterConfig,
@@ -67,7 +69,7 @@ task_to_keys = {
     "wnli": ("sentence1", "sentence2"),
 }
 
-glue_list = ["COLA", "MNLI", "MRPC", "QNLI", "QQP", "RTE", "SST2", "STSB", "WNLI"]
+glue_list = ["cola", "mnli", "mrpc", "qnli", "qqp", "rte", "sst2", "stsb", "wnli"]
 
 @dataclass
 class ModelArguments:
@@ -213,81 +215,82 @@ def main():
     # Set seed
     set_seed(training_args.seed)
     data_dir = data_args.data_dir
+    #print(data_dir)
 
     # datasets setup
     # 1. don't stop pre-training
 
     # label to id, set same as in don't stop repo
-    label_to_id_ft = {}
-    if "chemprot" in data_dir:
-        label_to_id_ft = {
-            "INHIBITOR": 0,
-            "SUBSTRATE": 1,
-            "INDIRECT-DOWNREGULATOR": 2,
-            "INDIRECT-UPREGULATOR": 3,
-            "ACTIVATOR": 4,
-            "ANTAGONIST": 5,
-            "PRODUCT-OF": 6,
-            "AGONIST": 7,
-            "DOWNREGULATOR": 8,
-            "UPREGULATOR": 9,
-            "AGONIST-ACTIVATOR": 10,
-            "SUBSTRATE_PRODUCT-OF": 11,  ## test set modify needed
-            "AGONIST-INHIBITOR": 12,
-        }
-        num_labels = 13
+    if data_dir is not None:
+        label_to_id_ft = {}
+        if "chemprot" in data_dir:
+            label_to_id_ft = {
+                "INHIBITOR": 0,
+                "SUBSTRATE": 1,
+                "INDIRECT-DOWNREGULATOR": 2,
+                "INDIRECT-UPREGULATOR": 3,
+                "ACTIVATOR": 4,
+                "ANTAGONIST": 5,
+                "PRODUCT-OF": 6,
+                "AGONIST": 7,
+                "DOWNREGULATOR": 8,
+                "UPREGULATOR": 9,
+                "AGONIST-ACTIVATOR": 10,
+                "SUBSTRATE_PRODUCT-OF": 11,  ## test set modify needed
+                "AGONIST-INHIBITOR": 12,
+            }
+            num_labels = 13
 
-    elif "rct" in data_dir:
-        label_to_id_ft = {"METHODS": 0, "RESULTS": 1, "CONCLUSIONS": 2, "BACKGROUND": 3, "OBJECTIVE": 4}
-        num_labels = 5
+        elif "rct" in data_dir:
+            label_to_id_ft = {"METHODS": 0, "RESULTS": 1, "CONCLUSIONS": 2, "BACKGROUND": 3, "OBJECTIVE": 4}
+            num_labels = 5
 
-    elif "citation" in data_dir or "acl" in data_dir:
-        label_to_id_ft = {
-            "Background": 0,
-            "Uses": 1,
-            "CompareOrContrast": 2,
-            "Motivation": 3,
-            "Extends": 4,
-            "Future": 5,
-        }
-        num_labels = 6
+        elif "citation" in data_dir or "acl" in data_dir:
+            label_to_id_ft = {
+                "Background": 0,
+                "Uses": 1,
+                "CompareOrContrast": 2,
+                "Motivation": 3,
+                "Extends": 4,
+                "Future": 5,
+            }
+            num_labels = 6
 
-    elif "scierc" in data_dir or "sciie" in data_dir:
-        label_to_id_ft = {
-            "USED-FOR": 0,
-            "CONJUNCTION": 1,
-            "EVALUATE-FOR": 2,
-            "HYPONYM-OF": 3,
-            "PART-OF": 4,
-            "FEATURE-OF": 5,
-            "COMPARE": 6,
-        }
-        num_labels = 7
+        elif "scierc" in data_dir or "sciie" in data_dir:
+            label_to_id_ft = {
+                "USED-FOR": 0,
+                "CONJUNCTION": 1,
+                "EVALUATE-FOR": 2,
+                "HYPONYM-OF": 3,
+                "PART-OF": 4,
+                "FEATURE-OF": 5,
+                "COMPARE": 6,
+            }
+            num_labels = 7
 
-    elif "hyper" in data_dir:
-        label_to_id_ft = {"false": 0, "true": 1}
-        num_labels = 2
+        elif "hyper" in data_dir:
+            label_to_id_ft = {"false": 0, "true": 1}
+            num_labels = 2
 
-    elif "ag" in data_dir or "agnews" in data_dir:
-        label_to_id_ft = {1: 0, 2: 1, 3: 2, 4: 3}
-        num_labels = 4
+        elif "ag" in data_dir or "agnews" in data_dir:
+            label_to_id_ft = {1: 0, 2: 1, 3: 2, 4: 3}
+            num_labels = 4
 
-    elif "amazon" in data_dir or "helpful" in data_dir:
-        label_to_id_ft = {"helpful": 0, "unhelpful": 1}
-        num_labels = 2
+        elif "amazon" in data_dir or "helpful" in data_dir:
+            label_to_id_ft = {"helpful": 0, "unhelpful": 1}
+            num_labels = 2
 
-    elif "imdb" in data_dir:
-        label_to_id_ft = {0: 0, 1: 1}
-        num_labels = 2
+        elif "imdb" in data_dir:
+            label_to_id_ft = {0: 0, 1: 1}
+            num_labels = 2
 
-    else:
-        assert False, (
-            "Data_dir not in [chemprot, rct-20k, rct-sample, citation_intent(ACL_ARC), "
-            "sciie(SCIERC), ag(AGNEWS), hyperpartisan_new (HYPERPARTISAN), imdb, amazon(helpfulness)] "
-        )
+        else:
+            assert False, (
+                "Data_dir not in [chemprot, rct-20k, rct-sample, citation_intent(ACL_ARC), "
+                "sciie(SCIERC), ag(AGNEWS), hyperpartisan_new (HYPERPARTISAN), imdb, amazon(helpfulness)] "
+            )
 
     output_mode = "classification"
-
 
 
     # 2. GLUE tasks
@@ -326,10 +329,6 @@ def main():
             label_list.sort()  # Let's sort it for determinism
             num_labels = len(label_list)
 
-
-
-
-
     # Load pretrained model and tokenizer
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
@@ -365,7 +364,7 @@ def main():
         model.train_adapter([data_args.task_name])
         if data_args.task_name in glue_list:
             model.add_classification_head(data_args.task_name, num_labels=num_labels,
-                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 1 else None,
                                           )
 
         else:
@@ -377,7 +376,7 @@ def main():
         model.train_adapter(model.config.adapters.adapter_list(AdapterType.text_lang)[0])  ###model.train_adapter([task_name])
         if data_args.task_name in glue_list:
             model.add_classification_head(data_args.task_name, num_labels=num_labels,
-                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 1 else None,
                                           )
         else:
             model.add_classification_head(model.config.adapters.adapter_list(AdapterType.text_lang)[0], num_labels=num_labels)
@@ -415,7 +414,7 @@ def main():
         model.train_fusion(ADAPTER_SETUP)
         if data_args.task_name in glue_list:
             model.add_classification_head(data_args.task_name, num_labels=num_labels,
-                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 1 else None,
                                           )
         else:
             model.add_classification_head(data_args.task_name, num_labels=num_labels)
@@ -423,7 +422,7 @@ def main():
     else:
         if data_args.task_name in glue_list:
             model.add_classification_head(data_args.task_name, num_labels=num_labels,
-                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                                          id2label={i: v for i, v in enumerate(label_list)} if num_labels > 1 else None,
                                           )
         else:
             model.add_classification_head(data_args.task_name, num_labels=num_labels)
@@ -494,6 +493,8 @@ def main():
         # Get the metric function
         if data_args.task_name is not None:
             metric = load_metric("glue", data_args.task_name)
+            #print('metric:' , metric)
+
 
         def compute_metrics_ft(p: EvalPrediction):
             preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
@@ -763,7 +764,10 @@ def main():
                             logger.info("  %s = %s", key, value)
                             writer.write("%s = %s\n" % (key, value))
 
-    return test_eval_result
+    if data_args.task_name in glue_list:
+        return predictions
+    else:
+        return test_eval_result
 
 
 def _mp_fn(index):
