@@ -278,7 +278,7 @@ def main():
         model.add_classification_head(data_args.task_name, num_labels=num_labels)
         model.set_active_adapters([[data_args.task_name]])
 
-    elif adapter_args.train_adapter:
+    elif adapter_args.train_adapter and model_args.train_fusion == False:
         model.train_adapter(model.config.adapters.adapter_list(AdapterType.text_lang)[0])  ###model.train_adapter([task_name])
         model.add_classification_head(model.config.adapters.adapter_list(AdapterType.text_lang)[0], num_labels=num_labels)
         # Set the adapters to be used in every forward pass
@@ -313,6 +313,11 @@ def main():
         logger.info(f"Model adapters = {ADAPTER_SETUP}")
         model.add_fusion(ADAPTER_SETUP[0], "dynamic")
         model.train_fusion(ADAPTER_SETUP)
+
+        # simultaneously training the pre-trained adapters with the fusion layers
+        if adapter_args.train_adapter:
+            model.encoder.enable_adapters(ADAPTER_SETUP[0], True, True)
+
         model.add_classification_head(data_args.task_name, num_labels=num_labels)
 
     else:
