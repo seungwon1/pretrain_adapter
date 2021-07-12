@@ -176,4 +176,5 @@ python new_train.py \
   --logging_dir runs/fusion/hyperpartisan_news \
 ```
 
-
+#### Reference
+- [Adapter-Hub](https://github.com/Adapter-Hub/adapter-transformers)
