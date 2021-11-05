@@ -1,5 +1,5 @@
 # Pretrain with adapter
-This repository contains code for RepL4NLP-2021 workshop paper Revisiting Pretraining with Adapters.
+This repository contains code for RepL4NLP-2021 workshop paper [Revisiting Pretraining with Adapters](https://aclanthology.org/2021.repl4nlp-1.11.pdf).
 
 ## How to Setup
 First create a virtual conda environment with python >= 3.6, install pytorch >= 1.1.0. Then,
